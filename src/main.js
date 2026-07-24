@@ -5,6 +5,8 @@ const vault = require('./vault');
 let notesWin = null;
 let tray = null;
 
+const ICON_PATH = path.join(__dirname, '..', 'assets', 'icon.png');
+
 function createNotesWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
   notesWin = new BrowserWindow({
@@ -12,6 +14,7 @@ function createNotesWindow() {
     height: 460,
     x: width - 360,
     y: 40,
+    icon: ICON_PATH,
     frame: false,
     resizable: true,
     alwaysOnTop: true,
@@ -52,11 +55,8 @@ function toggleNotesWindow() {
 }
 
 function makeTrayIcon() {
-  // Simple 16x16 dot so we don't depend on an external asset file.
-  const img = nativeImage.createFromDataURL(
-    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAT0lEQVR42mNkYGD4z0AEYBxVSFJhamr6z8DAwPD//38GYgFRLmBkZGQghqOxsbFEuwABYWBg+H8GBgYGRkYGYgFRLhg1YNSAUQNGDQAAqhwUAYy2i3wAAAAASUVORK5CYII='
-  );
-  return img;
+  const img = nativeImage.createFromPath(ICON_PATH);
+  return img.isEmpty() ? img : img.resize({ width: 16, height: 16 });
 }
 
 function createTray() {
