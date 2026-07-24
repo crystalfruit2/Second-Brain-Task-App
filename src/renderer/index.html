@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+    <link rel="stylesheet" href="styles.css" />
+    <title>Notes</title>
+  </head>
+  <body>
+    <header class="drag">
+      <span class="title">Notes</span>
+      <span class="date" id="date"></span>
+      <button class="close no-drag" id="hide" title="Hide (Esc)">–</button>
+    </header>
+
+    <main>
+      <textarea
+        id="input"
+        placeholder="Type a note… Enter to send, Shift+Enter for a new line"
+        autofocus
+      ></textarea>
+      <div class="row">
+        <span class="hint" id="status"></span>
+        <button id="send" class="no-drag">Send ↵</button>
+      </div>
+
+      <div class="recent">
+        <div class="recent-head">Today</div>
+        <ul id="list"></ul>
+      </div>
+    </main>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>

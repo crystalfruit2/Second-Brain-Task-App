@@ -1,0 +1,17 @@
+{
+  "name": "second-brain-task-app",
+  "version": "0.0.1",
+  "description": "Always-on-top note capture + task dashboard backed by the Second Brain vault",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "author": "Alp Eldam",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.2.0"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3"
+  }
+}
