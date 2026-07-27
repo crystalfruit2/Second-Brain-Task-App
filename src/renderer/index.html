@@ -8,12 +8,18 @@
   </head>
   <body>
     <header class="drag">
-      <span class="title">Notes</span>
-      <span class="date" id="date"></span>
-      <button class="close no-drag" id="hide" title="Hide (Esc)">–</button>
+      <div class="tabs no-drag">
+        <button class="tab active" id="tab-notes">Notes</button>
+        <button class="tab" id="tab-timer">Timer</button>
+      </div>
+      <div class="win-btns no-drag">
+        <button class="win-btn" id="hide" title="Hide (Esc)">–</button>
+        <button class="win-btn quit" id="quit" title="Quit app">×</button>
+      </div>
     </header>
 
-    <main>
+    <!-- ============ NOTES VIEW ============ -->
+    <main id="view-notes">
       <textarea
         id="input"
         placeholder="Type a note… Enter to send, Shift+Enter for a new line"
@@ -29,6 +35,40 @@
         <ul id="list"></ul>
       </div>
     </main>
+
+    <!-- ============ TIMER VIEW ============ -->
+    <main id="view-timer" class="hidden">
+      <div class="mode-tabs no-drag">
+        <button class="mode-tab active" id="m-focus">Focus</button>
+        <button class="mode-tab" id="m-pomo">Pomodoro</button>
+      </div>
+
+      <div class="clock" id="clock">00:00</div>
+      <div class="clock-label" id="clock-label">Focus</div>
+      <div class="dots" id="dots"></div>
+
+      <input
+        id="task"
+        class="task no-drag"
+        placeholder="Working on…"
+        autocomplete="off"
+      />
+
+      <div class="timer-controls no-drag">
+        <button id="main-action" class="primary">Start</button>
+        <button id="stop" class="ghost hidden">Stop</button>
+      </div>
+      <div class="hint center" id="timer-status"></div>
+    </main>
+
+    <!-- ============ DOCK FOOTER ============ -->
+    <footer class="dock-bar no-drag">
+      <button class="dock-btn" data-edge="left" title="Dock left">⇤</button>
+      <button class="dock-btn" data-edge="top" title="Dock top">⤒</button>
+      <button class="dock-btn" data-edge="bottom" title="Dock bottom">⤓</button>
+      <button class="dock-btn" data-edge="right" title="Dock right">⇥</button>
+      <button class="dock-btn" data-edge="float" title="Float">⧉</button>
+    </footer>
 
     <script src="renderer.js"></script>
   </body>

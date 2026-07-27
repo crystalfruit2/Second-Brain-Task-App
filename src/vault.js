@@ -111,4 +111,40 @@ function readTodayNotes(date = new Date()) {
     .map((l) => l.replace(/^-\s*/, ''));
 }
 
-module.exports = { appendNote, readTodayNotes, dailyNotePath, todayStamp };
+// Append a completed focus/pomodoro session to AI/pomodoro-log.json with
+// logged:false, so the existing `/pomodoro` "log session" flow syncs it to the
+// vault (daily note + matched Learning note) exactly as before. This is the one
+// integration point between the widget's timer and the vault.
+function appendPomodoroSession(session, date = new Date()) {
+  const file = path.join(VAULT_PATH, 'AI', 'pomodoro-log.json');
+  let arr = [];
+  if (fs.existsSync(file)) {
+    try {
+      arr = JSON.parse(fs.readFileSync(file, 'utf8')) || [];
+    } catch {
+      arr = [];
+    }
+  }
+  const entry = {
+    date: todayStamp(date),
+    time: timeStamp(date),
+    label: String(session.label || '').trim(),
+    duration: Math.max(0, Math.round(session.duration || 0)),
+    pomodoros: Math.max(0, Math.round(session.pomodoros || 0)),
+    mode: session.mode === 'pomodoro' ? 'pomodoro' : 'focus',
+    completed: !!session.completed,
+    logged: false,
+  };
+  arr.push(entry);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(arr, null, 2), 'utf8');
+  return entry;
+}
+
+module.exports = {
+  appendNote,
+  readTodayNotes,
+  appendPomodoroSession,
+  dailyNotePath,
+  todayStamp,
+};

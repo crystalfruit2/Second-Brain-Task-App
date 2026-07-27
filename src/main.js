@@ -1,19 +1,87 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const vault = require('./vault');
 
 let notesWin = null;
 let tray = null;
+let isQuitting = false;
 
 const ICON_PATH = path.join(__dirname, '..', 'assets', 'icon.png');
+const STATE_FILE = path.join(app.getPath('userData'), 'window-state.json');
+
+// Compact "perfect" defaults. Float = card in the top-right; docked sizes below.
+const FLOAT = { width: 340, height: 480 };
+const SIDE_W = 340; // width when docked to a left/right edge (full-height panel)
+const BAR_H = 340; // height when docked to top/bottom (centered card flush to edge)
+
+function readState() {
+  try {
+    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function saveState(partial) {
+  const prev = readState() || {};
+  const next = { ...prev, ...partial };
+  try {
+    fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
+    fs.writeFileSync(STATE_FILE, JSON.stringify(next, null, 2));
+  } catch {
+    /* non-fatal */
+  }
+}
+
+// Compute flush-to-edge bounds within the work area of the display the window is on.
+function boundsForDock(edge) {
+  const base = notesWin ? notesWin.getBounds() : { x: 0, y: 0 };
+  const disp = screen.getDisplayNearestPoint(base);
+  const wa = disp.workArea; // excludes taskbar
+  switch (edge) {
+    case 'left':
+      return { x: wa.x, y: wa.y, width: SIDE_W, height: wa.height };
+    case 'right':
+      return { x: wa.x + wa.width - SIDE_W, y: wa.y, width: SIDE_W, height: wa.height };
+    case 'top':
+      return {
+        x: wa.x + Math.round((wa.width - FLOAT.width) / 2),
+        y: wa.y,
+        width: FLOAT.width,
+        height: BAR_H,
+      };
+    case 'bottom':
+      return {
+        x: wa.x + Math.round((wa.width - FLOAT.width) / 2),
+        y: wa.y + wa.height - BAR_H,
+        width: FLOAT.width,
+        height: BAR_H,
+      };
+    case 'float':
+    default:
+      return {
+        x: wa.x + wa.width - FLOAT.width - 20,
+        y: wa.y + 40,
+        width: FLOAT.width,
+        height: FLOAT.height,
+      };
+  }
+}
+
+function dockTo(edge) {
+  if (!notesWin) return;
+  const b = boundsForDock(edge);
+  notesWin.setBounds(b, true);
+  saveState({ dock: edge, bounds: b });
+}
 
 function createNotesWindow() {
-  const { width } = screen.getPrimaryDisplay().workAreaSize;
+  const st = readState();
+  const startBounds = st && st.bounds ? st.bounds : boundsForDock('float');
+
   notesWin = new BrowserWindow({
-    width: 340,
-    height: 460,
-    x: width - 360,
-    y: 40,
+    ...startBounds,
     icon: ICON_PATH,
     frame: false,
     resizable: true,
@@ -21,7 +89,7 @@ function createNotesWindow() {
     skipTaskbar: true,
     show: false,
     minWidth: 260,
-    minHeight: 240,
+    minHeight: 300,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -35,22 +103,37 @@ function createNotesWindow() {
 
   notesWin.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
+  // Remember where the user leaves it (debounced).
+  let saveTimer = null;
+  const remember = () => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      if (notesWin && !notesWin.isDestroyed()) saveState({ bounds: notesWin.getBounds() });
+    }, 400);
+  };
+  notesWin.on('move', remember);
+  notesWin.on('resize', remember);
+
   notesWin.on('closed', () => {
     notesWin = null;
   });
 }
 
-function toggleNotesWindow() {
-  if (!notesWin) {
-    createNotesWindow();
-    notesWin.once('ready-to-show', () => notesWin.show());
-    return;
-  }
+function showWindow() {
+  if (!notesWin) createNotesWindow();
   if (notesWin.isVisible()) {
-    notesWin.hide();
+    notesWin.focus();
   } else {
     notesWin.show();
     notesWin.focus();
+  }
+}
+
+function toggleNotesWindow() {
+  if (notesWin && notesWin.isVisible()) {
+    notesWin.hide();
+  } else {
+    showWindow();
   }
 }
 
@@ -61,28 +144,46 @@ function makeTrayIcon() {
 
 function createTray() {
   tray = new Tray(makeTrayIcon());
-  tray.setToolTip('Second Brain — Notes');
+  tray.setToolTip('Second Brain — Notes & Timer');
   const menu = Menu.buildFromTemplate([
-    { label: 'Show / hide notes', click: toggleNotesWindow },
+    { label: 'Show / hide', click: toggleNotesWindow },
+    {
+      label: 'Dock',
+      submenu: [
+        { label: 'Left edge', click: () => dockTo('left') },
+        { label: 'Right edge', click: () => dockTo('right') },
+        { label: 'Top edge', click: () => dockTo('top') },
+        { label: 'Bottom edge', click: () => dockTo('bottom') },
+        { type: 'separator' },
+        { label: 'Float (top-right)', click: () => dockTo('float') },
+      ],
+    },
     { type: 'separator' },
-    { label: 'Quit', click: () => app.quit() },
+    {
+      label: 'Quit',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
   ]);
   tray.setContextMenu(menu);
   tray.on('click', toggleNotesWindow);
 }
 
-// ---- IPC: renderer -> vault ----
-ipcMain.handle('note:append', (_e, text) => {
-  return vault.appendNote(text);
-});
-
-ipcMain.handle('note:today', () => {
-  return vault.readTodayNotes();
-});
+// ---- IPC: renderer -> main ----
+ipcMain.handle('note:append', (_e, text) => vault.appendNote(text));
+ipcMain.handle('note:today', () => vault.readTodayNotes());
+ipcMain.handle('pomodoro:log', (_e, session) => vault.appendPomodoroSession(session));
 
 ipcMain.on('window:hide', () => {
   if (notesWin) notesWin.hide();
 });
+ipcMain.on('window:quit', () => {
+  isQuitting = true;
+  app.quit();
+});
+ipcMain.on('window:dock', (_e, edge) => dockTo(edge));
 
 app.whenReady().then(() => {
   createTray();
@@ -94,7 +195,7 @@ app.whenReady().then(() => {
   });
 });
 
-// Keep running in the tray when the window is closed.
-app.on('window-all-closed', (e) => {
-  // Do not quit; the tray keeps the app alive.
+// Keep running in the tray when the window is closed — only real quit exits.
+app.on('window-all-closed', () => {
+  if (isQuitting) app.quit();
 });
