@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+    <link rel="stylesheet" href="dashboard.css" />
+    <title>Second Brain — Dashboard</title>
+  </head>
+  <body>
+    <header>
+      <h1>Second Brain</h1>
+      <span class="subtitle">Tasks, reading, and projects pulled live from the vault</span>
+      <button id="refresh" title="Refresh">⟳ Refresh</button>
+    </header>
+
+    <main class="board">
+      <section class="panel" id="panel-tasks">
+        <div class="panel-head">
+          <span class="panel-title">Tasks</span>
+          <span class="count" id="count-tasks">0</span>
+        </div>
+        <div class="panel-body" id="list-tasks"></div>
+      </section>
+
+      <section class="panel" id="panel-reading">
+        <div class="panel-head">
+          <span class="panel-title">Reading</span>
+          <span class="count" id="count-reading">0</span>
+        </div>
+        <div class="panel-body" id="list-reading"></div>
+      </section>
+
+      <section class="panel" id="panel-projects">
+        <div class="panel-head">
+          <span class="panel-title">Projects</span>
+          <span class="count" id="count-projects">0</span>
+        </div>
+        <div class="panel-body" id="list-projects"></div>
+      </section>
+    </main>
+
+    <script src="dashboard.js"></script>
+  </body>
+</html>

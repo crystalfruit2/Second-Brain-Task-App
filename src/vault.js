@@ -141,10 +141,144 @@ function appendPomodoroSession(session, date = new Date()) {
   return entry;
 }
 
+// ---------------------------------------------------------------------------
+// Tasks / Reading dashboard: aggregate `## Tasks` checkboxes across the last
+// N days of Daily notes, and write toggles back to the exact source line.
+// ---------------------------------------------------------------------------
+
+const TASKS_HEADING = '## Tasks';
+
+// Body of a `## heading` section: from just after the heading line up to
+// (not including) the next `## ` heading, or end of file.
+function sectionBody(content, heading) {
+  const idx = content.indexOf(heading);
+  if (idx === -1) return null;
+  const start = content.indexOf('\n', idx) + 1;
+  const rest = content.slice(start);
+  const nextHeading = rest.search(/\n## /);
+  const bodyEnd = nextHeading === -1 ? rest.length : nextHeading + 1;
+  return { start, body: rest.slice(0, bodyEnd) };
+}
+
+function parseCheckboxLines(body) {
+  const lines = body.split('\n');
+  const items = [];
+  lines.forEach((line, i) => {
+    const m = line.match(/^- \[([ xX])\]\s+(.*)$/);
+    if (m) items.push({ lineIndex: i, checked: m[1].toLowerCase() === 'x', raw: line, text: m[2] });
+  });
+  return items;
+}
+
+// "Reading while training runs: ..." style items already used in daily notes —
+// no separate heading exists yet, so classify by leading word.
+function isReadingItem(text) {
+  return /^reading\b/i.test(text.trim());
+}
+
+function listDailyFiles(daysBack = 7) {
+  const dir = path.join(VAULT_PATH, 'Daily');
+  const files = [];
+  const today = new Date();
+  for (let i = 0; i <= daysBack; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const stamp = todayStamp(d);
+    const file = path.join(dir, `${stamp}.md`);
+    if (fs.existsSync(file)) files.push({ file, date: stamp });
+  }
+  return files;
+}
+
+// All checkbox items from `## Tasks` across today + the last `daysBack` days.
+function listTasks(daysBack = 7) {
+  const out = [];
+  for (const { file, date } of listDailyFiles(daysBack)) {
+    const content = fs.readFileSync(file, 'utf8');
+    const sec = sectionBody(content, TASKS_HEADING);
+    if (!sec) continue;
+    const lineOffset = content.slice(0, sec.start).split('\n').length - 1;
+    for (const it of parseCheckboxLines(sec.body)) {
+      out.push({
+        file,
+        date,
+        line: lineOffset + it.lineIndex,
+        raw: it.raw,
+        text: it.text,
+        checked: it.checked,
+        kind: isReadingItem(it.text) ? 'reading' : 'task',
+      });
+    }
+  }
+  return out;
+}
+
+// Flip `- [ ]` <-> `- [x]` on one line of one file. `line`/`raw` come from
+// listTasks() and are used to re-locate the exact line even if earlier lines
+// in the file shifted; falls back to an exact-text search if the file changed.
+function toggleTaskLine(file, line, raw) {
+  const content = fs.readFileSync(file, 'utf8');
+  const lines = content.split('\n');
+  let at = line;
+  if (lines[at] !== raw) {
+    at = lines.indexOf(raw);
+    if (at === -1) throw new Error('That task line no longer matches the note — it may have changed.');
+  }
+  const toggled = /^- \[ \]/.test(raw)
+    ? raw.replace('- [ ]', '- [x]')
+    : raw.replace(/^- \[[xX]\]/, '- [ ]');
+  lines[at] = toggled;
+  fs.writeFileSync(file, lines.join('\n'), 'utf8');
+  return { file, line: at, raw: toggled, checked: /^- \[[xX]\]/.test(toggled) };
+}
+
+// ---------------------------------------------------------------------------
+// Projects panel: parse Resources/project-registry.md's table.
+// ---------------------------------------------------------------------------
+
+function splitRow(line) {
+  // Split on unescaped `|` only — cells use `\|` inside wikilink aliases
+  // (e.g. [[Foo\|Bar]]) — then trim and unescape.
+  return line
+    .trim()
+    .replace(/^\||\|$/g, '')
+    .split(/(?<!\\)\|/)
+    .map((c) => c.trim().replace(/\\\|/g, '|'));
+}
+
+function listProjects() {
+  const file = path.join(VAULT_PATH, 'Resources', 'project-registry.md');
+  if (!fs.existsSync(file)) return [];
+  const content = fs.readFileSync(file, 'utf8');
+  const rows = [];
+  let inTable = false;
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('|')) {
+      if (inTable) break;
+      continue;
+    }
+    inTable = true;
+    if (/^\|[\s:|-]+\|$/.test(trimmed)) continue; // separator row
+    const cells = splitRow(trimmed);
+    if (cells[0] === 'Project') continue; // header row
+    rows.push({
+      name: cells[0] || '',
+      status: cells[1] || '',
+      path: cells[2] || '',
+      graph: cells[3] || '',
+    });
+  }
+  return rows;
+}
+
 module.exports = {
   appendNote,
   readTodayNotes,
   appendPomodoroSession,
   dailyNotePath,
   todayStamp,
+  listTasks,
+  toggleTaskLine,
+  listProjects,
 };

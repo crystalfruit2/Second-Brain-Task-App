@@ -4,6 +4,7 @@ const fs = require('fs');
 const vault = require('./vault');
 
 let notesWin = null;
+let dashboardWin = null;
 let tray = null;
 let isQuitting = false;
 
@@ -137,6 +138,32 @@ function toggleNotesWindow() {
   }
 }
 
+function createDashboardWindow() {
+  if (dashboardWin && !dashboardWin.isDestroyed()) {
+    dashboardWin.show();
+    dashboardWin.focus();
+    return;
+  }
+  dashboardWin = new BrowserWindow({
+    width: 980,
+    height: 720,
+    minWidth: 640,
+    minHeight: 480,
+    icon: ICON_PATH,
+    title: 'Second Brain — Dashboard',
+    backgroundColor: '#1c1c20',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  dashboardWin.loadFile(path.join(__dirname, 'renderer', 'dashboard.html'));
+  dashboardWin.on('closed', () => {
+    dashboardWin = null;
+  });
+}
+
 function makeTrayIcon() {
   const img = nativeImage.createFromPath(ICON_PATH);
   return img.isEmpty() ? img : img.resize({ width: 16, height: 16 });
@@ -146,7 +173,8 @@ function createTray() {
   tray = new Tray(makeTrayIcon());
   tray.setToolTip('Second Brain — Notes & Timer');
   const menu = Menu.buildFromTemplate([
-    { label: 'Show / hide', click: toggleNotesWindow },
+    { label: 'Show / hide notes', click: toggleNotesWindow },
+    { label: 'Dashboard', click: createDashboardWindow },
     {
       label: 'Dock',
       submenu: [
@@ -175,6 +203,9 @@ function createTray() {
 ipcMain.handle('note:append', (_e, text) => vault.appendNote(text));
 ipcMain.handle('note:today', () => vault.readTodayNotes());
 ipcMain.handle('pomodoro:log', (_e, session) => vault.appendPomodoroSession(session));
+ipcMain.handle('tasks:list', () => vault.listTasks());
+ipcMain.handle('tasks:toggle', (_e, { file, line, raw }) => vault.toggleTaskLine(file, line, raw));
+ipcMain.handle('projects:list', () => vault.listProjects());
 
 ipcMain.on('window:hide', () => {
   if (notesWin) notesWin.hide();
@@ -184,6 +215,7 @@ ipcMain.on('window:quit', () => {
   app.quit();
 });
 ipcMain.on('window:dock', (_e, edge) => dockTo(edge));
+ipcMain.on('window:dashboard', () => createDashboardWindow());
 
 app.whenReady().then(() => {
   createTray();

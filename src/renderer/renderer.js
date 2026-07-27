@@ -16,6 +16,7 @@ tabNotes.addEventListener('click', () => showView('notes'));
 tabTimer.addEventListener('click', () => showView('timer'));
 
 // ======================= window buttons =======================
+document.getElementById('dashboard').addEventListener('click', () => window.brain.openDashboard());
 document.getElementById('hide').addEventListener('click', () => window.brain.hide());
 document.getElementById('quit').addEventListener('click', () => window.brain.quit());
 document.querySelectorAll('.dock-btn').forEach((btn) => {
