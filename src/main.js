@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { execFile } = require('child_process');
 const vault = require('./vault');
 
 let notesWin = null;
@@ -164,6 +165,24 @@ function createDashboardWindow() {
   });
 }
 
+const PIN_SCRIPT = path.join(__dirname, 'native', 'pin-window.ps1');
+
+// Toggle Windows "always on top" for the window whose title matches (default: Claude).
+// Runs the bundled PowerShell/Win32 helper out-of-process; resolves to 'PINNED' | 'UNPINNED' | 'NOTFOUND'.
+function pinExternalWindow(titleMatch = 'Claude') {
+  return new Promise((resolve) => {
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', PIN_SCRIPT, '-TitleMatch', titleMatch],
+      { windowsHide: true },
+      (err, stdout) => {
+        if (err) return resolve('NOTFOUND');
+        resolve(stdout.trim());
+      }
+    );
+  });
+}
+
 function makeTrayIcon() {
   const img = nativeImage.createFromPath(ICON_PATH);
   return img.isEmpty() ? img : img.resize({ width: 16, height: 16 });
@@ -175,6 +194,7 @@ function createTray() {
   const menu = Menu.buildFromTemplate([
     { label: 'Show / hide notes', click: toggleNotesWindow },
     { label: 'Dashboard', click: createDashboardWindow },
+    { label: 'Pin Claude on top', click: () => pinExternalWindow('Claude') },
     {
       label: 'Dock',
       submenu: [
@@ -206,6 +226,16 @@ ipcMain.handle('pomodoro:log', (_e, session) => vault.appendPomodoroSession(sess
 ipcMain.handle('tasks:list', () => vault.listTasks());
 ipcMain.handle('tasks:toggle', (_e, { file, line, raw }) => vault.toggleTaskLine(file, line, raw));
 ipcMain.handle('projects:list', () => vault.listProjects());
+ipcMain.handle('window:pinClaude', () => pinExternalWindow('Claude'));
+ipcMain.handle('health:cigCount', () => vault.getCigCount());
+ipcMain.handle('health:cigLog', (_e, delta) => vault.logCigarette(delta));
+ipcMain.handle('article:save', (_e, data) => vault.saveArticleNote(data));
+ipcMain.handle('article:draftGet', () => vault.readArticleDraft());
+ipcMain.handle('article:draftSave', (_e, draft) => vault.saveArticleDraft(draft));
+ipcMain.handle('article:draftClear', () => {
+  vault.clearArticleDraft();
+  return true;
+});
 
 ipcMain.on('window:hide', () => {
   if (notesWin) notesWin.hide();

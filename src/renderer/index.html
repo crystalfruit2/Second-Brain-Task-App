@@ -11,8 +11,13 @@
       <div class="tabs no-drag">
         <button class="tab active" id="tab-notes">Notes</button>
         <button class="tab" id="tab-timer">Timer</button>
+        <button class="tab" id="tab-article">Article</button>
       </div>
       <div class="win-btns no-drag">
+        <button class="win-btn cig-btn" id="cig-counter" title="Log a cigarette (right-click to undo)">
+          🚬 <span id="cig-count">0</span>
+        </button>
+        <button class="win-btn" id="pin-claude" title="Pin Claude window on top">📌</button>
         <button class="win-btn" id="dashboard" title="Open dashboard">⊞</button>
         <button class="win-btn" id="hide" title="Hide (Esc)">–</button>
         <button class="win-btn quit" id="quit" title="Quit app">×</button>
@@ -60,6 +65,30 @@
         <button id="stop" class="ghost hidden">Stop</button>
       </div>
       <div class="hint center" id="timer-status"></div>
+    </main>
+
+    <!-- ============ ARTICLE VIEW ============ -->
+    <main id="view-article" class="hidden">
+      <input id="a-title" class="a-input" placeholder="Article title" autocomplete="off" />
+      <div class="field-row">
+        <input id="a-url" class="a-input" placeholder="URL (optional)" autocomplete="off" />
+        <input id="a-source" class="a-input" placeholder="Author / source (optional)" autocomplete="off" />
+      </div>
+
+      <label class="a-label" for="a-highlights">Highlights <span class="a-hint-inline">verbatim quotes</span></label>
+      <textarea id="a-highlights" class="a-textarea" placeholder="Paste the lines worth keeping…"></textarea>
+
+      <label class="a-label" for="a-thoughts">My Thoughts <span class="a-hint-inline">your own words</span></label>
+      <textarea id="a-thoughts" class="a-textarea" placeholder="What this means, questions, connections…"></textarea>
+
+      <label class="a-label" for="a-takeaway">Key Takeaway <span class="a-hint-inline">required to save</span></label>
+      <input id="a-takeaway" class="a-input" placeholder="One line — the thing worth remembering" autocomplete="off" />
+
+      <div class="row">
+        <span class="hint" id="a-status"></span>
+        <button id="a-clear" class="ghost no-drag">Clear</button>
+        <button id="a-save" class="no-drag">Save to Vault</button>
+      </div>
     </main>
 
     <!-- ============ DOCK FOOTER ============ -->

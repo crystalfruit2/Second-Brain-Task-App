@@ -1,21 +1,72 @@
 // ======================= view switching =======================
 const tabNotes = document.getElementById('tab-notes');
 const tabTimer = document.getElementById('tab-timer');
+const tabArticle = document.getElementById('tab-article');
 const viewNotes = document.getElementById('view-notes');
 const viewTimer = document.getElementById('view-timer');
+const viewArticle = document.getElementById('view-article');
 
 function showView(which) {
-  const notes = which === 'notes';
-  tabNotes.classList.toggle('active', notes);
-  tabTimer.classList.toggle('active', !notes);
-  viewNotes.classList.toggle('hidden', !notes);
-  viewTimer.classList.toggle('hidden', notes);
-  if (notes) input.focus();
+  tabNotes.classList.toggle('active', which === 'notes');
+  tabTimer.classList.toggle('active', which === 'timer');
+  tabArticle.classList.toggle('active', which === 'article');
+  viewNotes.classList.toggle('hidden', which !== 'notes');
+  viewTimer.classList.toggle('hidden', which !== 'timer');
+  viewArticle.classList.toggle('hidden', which !== 'article');
+  if (which === 'notes') input.focus();
+  if (which === 'article') aTitle.focus();
 }
 tabNotes.addEventListener('click', () => showView('notes'));
 tabTimer.addEventListener('click', () => showView('timer'));
+tabArticle.addEventListener('click', () => showView('article'));
+
+// ======================= cig counter =======================
+const cigBtn = document.getElementById('cig-counter');
+const cigCountEl = document.getElementById('cig-count');
+
+async function refreshCigCount() {
+  try {
+    cigCountEl.textContent = await window.brain.cigCount();
+  } catch {
+    /* non-fatal */
+  }
+}
+
+async function logCig(delta) {
+  cigBtn.disabled = true;
+  try {
+    cigCountEl.textContent = await window.brain.logCig(delta);
+  } finally {
+    cigBtn.disabled = false;
+  }
+}
+
+cigBtn.addEventListener('click', () => logCig(1));
+cigBtn.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  logCig(-1);
+});
+
+refreshCigCount();
 
 // ======================= window buttons =======================
+const pinBtn = document.getElementById('pin-claude');
+pinBtn.addEventListener('click', async () => {
+  pinBtn.disabled = true;
+  try {
+    const result = await window.brain.pinClaude(); // 'PINNED' | 'UNPINNED' | 'NOTFOUND'
+    pinBtn.classList.toggle('active', result === 'PINNED');
+    pinBtn.title =
+      result === 'NOTFOUND'
+        ? 'No Claude window found — open it first'
+        : result === 'PINNED'
+          ? 'Claude pinned on top (click to unpin)'
+          : 'Pin Claude window on top';
+  } finally {
+    pinBtn.disabled = false;
+  }
+});
+
 document.getElementById('dashboard').addEventListener('click', () => window.brain.openDashboard());
 document.getElementById('hide').addEventListener('click', () => window.brain.hide());
 document.getElementById('quit').addEventListener('click', () => window.brain.quit());
@@ -308,13 +359,118 @@ mainBtn.addEventListener('click', () => {
 });
 stopBtn.addEventListener('click', stop);
 
+// ======================= ARTICLE =======================
+const aTitle = document.getElementById('a-title');
+const aUrl = document.getElementById('a-url');
+const aSource = document.getElementById('a-source');
+const aHighlights = document.getElementById('a-highlights');
+const aThoughts = document.getElementById('a-thoughts');
+const aTakeaway = document.getElementById('a-takeaway');
+const aStatus = document.getElementById('a-status');
+const aSaveBtn = document.getElementById('a-save');
+const aClearBtn = document.getElementById('a-clear');
+const articleFieldEls = [aTitle, aUrl, aSource, aHighlights, aThoughts, aTakeaway];
+
+function articleFields() {
+  return {
+    title: aTitle.value,
+    url: aUrl.value,
+    source: aSource.value,
+    highlights: aHighlights.value,
+    thoughts: aThoughts.value,
+    takeaway: aTakeaway.value,
+  };
+}
+
+function fillArticle(draft) {
+  aTitle.value = draft?.title || '';
+  aUrl.value = draft?.url || '';
+  aSource.value = draft?.source || '';
+  aHighlights.value = draft?.highlights || '';
+  aThoughts.value = draft?.thoughts || '';
+  aTakeaway.value = draft?.takeaway || '';
+}
+
+// Debounced autosave so switching tabs (or the app closing) mid-read doesn't
+// lose typed notes — mirrors the pattern the window-position saver uses.
+let aDraftTimer;
+function scheduleDraftSave() {
+  clearTimeout(aDraftTimer);
+  aDraftTimer = setTimeout(async () => {
+    const f = articleFields();
+    if (!f.title && !f.url && !f.highlights && !f.thoughts && !f.takeaway) return;
+    try {
+      await window.brain.saveArticleDraft(f);
+    } catch {
+      /* non-fatal */
+    }
+  }, 800);
+}
+articleFieldEls.forEach((el) => el.addEventListener('input', scheduleDraftSave));
+
+let clearAStatus;
+function aFlash(msg, ok = true) {
+  aStatus.textContent = msg;
+  aStatus.style.color = ok ? 'var(--muted)' : 'var(--danger)';
+  clearTimeout(clearAStatus);
+  clearAStatus = setTimeout(() => (aStatus.textContent = ''), 2500);
+}
+
+async function saveArticle() {
+  const f = articleFields();
+  if (!f.title.trim()) {
+    aTitle.focus();
+    aFlash('Title is required', false);
+    return;
+  }
+  if (!f.takeaway.trim()) {
+    aTakeaway.focus();
+    aFlash('Add a key takeaway before saving', false);
+    return;
+  }
+  aSaveBtn.disabled = true;
+  try {
+    const { file } = await window.brain.saveArticle(f);
+    fillArticle(null);
+    aFlash(`Saved → ${file.split(/[\\/]/).pop()} ✓`);
+  } catch (e) {
+    aFlash('Failed to save: ' + (e && e.message ? e.message : e), false);
+  } finally {
+    aSaveBtn.disabled = false;
+  }
+}
+
+async function clearArticle() {
+  fillArticle(null);
+  try {
+    await window.brain.clearArticleDraft();
+  } catch {
+    /* non-fatal */
+  }
+  aFlash('Cleared');
+  aTitle.focus();
+}
+
+aSaveBtn.addEventListener('click', saveArticle);
+aClearBtn.addEventListener('click', clearArticle);
+
+async function loadArticleDraft() {
+  try {
+    fillArticle(await window.brain.getArticleDraft());
+  } catch {
+    /* non-fatal */
+  }
+}
+
 // ======================= init =======================
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && document.activeElement !== taskEl && document.activeElement !== input) {
+  const typing = document.activeElement === taskEl || document.activeElement === input || articleFieldEls.includes(document.activeElement);
+  if (e.key === 'Escape' && !typing) {
     window.brain.hide();
   }
 });
 
 setMode('focus');
 refreshNotes();
+loadArticleDraft();
 showView('notes');

@@ -142,6 +142,90 @@ function appendPomodoroSession(session, date = new Date()) {
 }
 
 // ---------------------------------------------------------------------------
+// Cigarette counter: a tally kept inside the day's `### Health log — DATE`
+// section (the same section Claude already writes by hand — see
+// Areas/Health.md), as a single `- 🚬 N cigarettes` line that gets
+// incremented/decremented in place rather than appended as a growing list.
+// ---------------------------------------------------------------------------
+
+const CIG_LINE_RE = /^- 🚬 (\d+) cigarettes?$/m;
+
+function healthLogHeading(date) {
+  return `### Health log — ${todayStamp(date)}`;
+}
+
+// Bounded section body: from just after `heading`'s line up to the next
+// `##`/`###` heading, or end of file. Health log is a level-3 heading nested
+// among level-2 sections, so unlike sectionBody() (tasks) this stops at
+// either level.
+function boundedSection(content, heading) {
+  const idx = content.indexOf(heading);
+  if (idx === -1) return null;
+  const start = content.indexOf('\n', idx) + 1;
+  const rest = content.slice(start);
+  const nextIdx = rest.search(/\n#{2,3} /);
+  const end = nextIdx === -1 ? rest.length : nextIdx + 1;
+  return { start, end: start + end, body: rest.slice(0, end) };
+}
+
+// Insert the Health log section if missing, at the same anchor point Quick
+// Notes uses, so the day's running logs stay grouped together.
+function ensureHealthLogSection(content, date) {
+  const heading = healthLogHeading(date);
+  if (content.includes(heading)) return content;
+
+  const block = `${heading}\n> Rolls up to [[Health]]\n- 🚬 0 cigarettes\n\n`;
+  const anchors = ['## Pomodoro Log', '\n---\n## End of Day', '\n---\n'];
+  for (const anchor of anchors) {
+    const idx = content.indexOf(anchor);
+    if (idx !== -1) {
+      return content.slice(0, idx) + block + '\n' + content.slice(idx);
+    }
+  }
+  const sep = content.endsWith('\n') ? '' : '\n';
+  return content + sep + '\n' + block;
+}
+
+function getCigCount(date = new Date()) {
+  const file = dailyNotePath(date);
+  if (!fs.existsSync(file)) return 0;
+  const content = fs.readFileSync(file, 'utf8');
+  const sec = boundedSection(content, healthLogHeading(date));
+  if (!sec) return 0;
+  const m = sec.body.match(CIG_LINE_RE);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+// delta=+1 to log one, delta=-1 to undo a misclick. Floors at 0.
+function logCigarette(delta = 1, date = new Date()) {
+  const file = dailyNotePath(date);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+
+  let content = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : seedDailyNote(date);
+  content = ensureHealthLogSection(content, date);
+
+  const heading = healthLogHeading(date);
+  const sec = boundedSection(content, heading);
+  const current = (sec.body.match(CIG_LINE_RE) || [])[1];
+  const next = Math.max(0, (current ? parseInt(current, 10) : 0) + delta);
+  const line = `- 🚬 ${next} cigarette${next === 1 ? '' : 's'}`;
+
+  let body;
+  if (CIG_LINE_RE.test(sec.body)) {
+    body = sec.body.replace(CIG_LINE_RE, line);
+  } else {
+    const lines = sec.body.split('\n');
+    const insertAt = lines[0] && lines[0].startsWith('>') ? 1 : 0;
+    lines.splice(insertAt, 0, line);
+    body = lines.join('\n');
+  }
+
+  content = content.slice(0, sec.start) + body + content.slice(sec.end);
+  fs.writeFileSync(file, content, 'utf8');
+  return next;
+}
+
+// ---------------------------------------------------------------------------
 // Tasks / Reading dashboard: aggregate `## Tasks` checkboxes across the last
 // N days of Daily notes, and write toggles back to the exact source line.
 // ---------------------------------------------------------------------------
@@ -272,6 +356,99 @@ function listProjects() {
   return rows;
 }
 
+// ---------------------------------------------------------------------------
+// Article reading sessions: a structured note (title/url/source, verbatim
+// Highlights vs. your own Thoughts, a forced Key Takeaway) saved straight to
+// Resources/ as a real vault note — not a growing log like Quick Notes, one
+// file per article. A single in-progress draft is mirrored to
+// AI/article-draft.json (debounced from the renderer) so switching tabs, or
+// even quitting mid-read, doesn't lose typed notes before you hit Save.
+// ---------------------------------------------------------------------------
+
+const ARTICLE_DRAFT_FILE = () => path.join(VAULT_PATH, 'AI', 'article-draft.json');
+
+// Filesystem-safe title -> filename, deduped against existing Resources notes
+// the same way Obsidian/Explorer would ("Title.md", "Title (2).md", ...).
+function uniqueResourcePath(title) {
+  const base = title.trim().replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').slice(0, 120) || 'Untitled Article';
+  const dir = path.join(VAULT_PATH, 'Resources');
+  let file = path.join(dir, `${base}.md`);
+  let n = 2;
+  while (fs.existsSync(file)) {
+    file = path.join(dir, `${base} (${n}).md`);
+    n++;
+  }
+  return file;
+}
+
+// Writes one Resources/*.md note per article and clears the draft on success.
+// Title and a Key Takeaway are required — everything else is optional, since
+// a highlight-free "just my thoughts" note is still a valid capture.
+function saveArticleNote(data, date = new Date()) {
+  const title = String(data.title || '').trim();
+  if (!title) throw new Error('Title is required');
+  const takeaway = String(data.takeaway || '').trim();
+  if (!takeaway) throw new Error('Add a key takeaway before saving');
+
+  const url = String(data.url || '').trim();
+  const source = String(data.source || '').trim();
+  const highlights = String(data.highlights || '').trim();
+  const thoughts = String(data.thoughts || '').trim();
+
+  const dir = path.join(VAULT_PATH, 'Resources');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = uniqueResourcePath(title);
+
+  const fm = ['---', 'tags:', '  - resource', '  - article', '  - needs-review', 'status: reference', `created: ${todayStamp(date)}`];
+  if (url) fm.push(`source: ${url}`);
+  if (source) fm.push(`author: ${source}`);
+  fm.push('---', '');
+
+  const body = [`# ${title}`, ''];
+  if (url) body.push(`> [Source](${url})${source ? ` — ${source}` : ''}`, '');
+  body.push('## Key Takeaway', takeaway, '');
+  if (highlights) body.push('## Highlights', highlights, '');
+  if (thoughts) body.push('## My Thoughts', thoughts, '');
+
+  const content = fm.concat(body).join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
+  fs.writeFileSync(file, content, 'utf8');
+  clearArticleDraft();
+  return { file, title };
+}
+
+function readArticleDraft() {
+  const file = ARTICLE_DRAFT_FILE();
+  if (!fs.existsSync(file)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+// Debounced from the renderer on every keystroke — cheap single-object
+// overwrite, not an append log, since there's only ever one draft in flight.
+function saveArticleDraft(draft) {
+  const file = ARTICLE_DRAFT_FILE();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const payload = {
+    title: draft.title || '',
+    url: draft.url || '',
+    source: draft.source || '',
+    highlights: draft.highlights || '',
+    thoughts: draft.thoughts || '',
+    takeaway: draft.takeaway || '',
+    updatedAt: new Date().toISOString(),
+  };
+  fs.writeFileSync(file, JSON.stringify(payload, null, 2), 'utf8');
+  return payload;
+}
+
+function clearArticleDraft() {
+  const file = ARTICLE_DRAFT_FILE();
+  if (fs.existsSync(file)) fs.unlinkSync(file);
+}
+
 module.exports = {
   appendNote,
   readTodayNotes,
@@ -281,4 +458,10 @@ module.exports = {
   listTasks,
   toggleTaskLine,
   listProjects,
+  getCigCount,
+  logCigarette,
+  saveArticleNote,
+  readArticleDraft,
+  saveArticleDraft,
+  clearArticleDraft,
 };
