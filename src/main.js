@@ -67,6 +67,27 @@ function saveState(partial) {
   }
 }
 
+// The one session whose checklist the widget's Tasks tab currently shows —
+// a UI preference (which terminal am I following right now), not vault
+// content, so it lives in the same app-local window-state.json as window
+// bounds/dock edge rather than anywhere in the vault. Set by clicking a
+// session card in the Dashboard; the widget (if open) gets pushed the change
+// live so switching sessions from the Dashboard updates the Tasks tab
+// immediately without a manual refresh.
+function getActiveSession() {
+  const st = readState();
+  return (st && st.activeSession) || null;
+}
+
+function setActiveSession(slug, name) {
+  const value = slug ? { slug, name: name || slug } : null;
+  saveState({ activeSession: value });
+  if (notesWin && !notesWin.isDestroyed()) {
+    notesWin.webContents.send('session:activeChanged', value);
+  }
+  return value;
+}
+
 // Compute flush-to-edge bounds within the work area of the display the window is on.
 function boundsForDock(edge) {
   const base = notesWin ? notesWin.getBounds() : { x: 0, y: 0 };
@@ -278,6 +299,9 @@ ipcMain.handle('projects:list', () => vault.listProjects());
 ipcMain.handle('sessions:list', () => sessions.listSessions());
 ipcMain.handle('session:notesGet', (_e, slug) => vault.readSessionNotes(slug));
 ipcMain.handle('session:notesSave', (_e, { slug, name, text }) => vault.saveSessionNotes(slug, name, text));
+ipcMain.handle('session:getActive', () => getActiveSession());
+ipcMain.handle('session:setActive', (_e, { slug, name }) => setActiveSession(slug, name));
+ipcMain.handle('session:taskItems', (_e, slug) => vault.listSessionTaskItems(slug));
 ipcMain.handle('window:pinClaude', () => pinExternalWindow('Claude'));
 ipcMain.handle('health:cigCount', () => vault.getCigCount());
 ipcMain.handle('health:cigLog', (_e, delta) => vault.logCigarette(delta));

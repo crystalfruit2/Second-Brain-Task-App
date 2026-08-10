@@ -19,10 +19,11 @@ function run(cmd, args) {
   });
 }
 
-// `ps -axo pid=,etime=,comm=` — comm is the last whitespace-separated token
-// (never contains spaces for our target), so a plain split is safe.
+// `ps -axo pid=,tty=,etime=,comm=` — comm is the last whitespace-separated
+// token (never contains spaces for our target), tty distinguishes separate
+// terminal windows/tabs even when they share a cwd and a comm name.
 async function listClaudeProcesses() {
-  const out = await run('ps', ['-axo', 'pid=,etime=,comm=']);
+  const out = await run('ps', ['-axo', 'pid=,tty=,etime=,comm=']);
   const procs = [];
   for (const line of out.split('\n')) {
     const t = line.trim();
@@ -31,8 +32,9 @@ async function listClaudeProcesses() {
     const comm = parts[parts.length - 1];
     if (comm !== 'claude') continue;
     const pid = parts[0];
-    const etime = parts.slice(1, -1).join(' ');
-    procs.push({ pid, etime });
+    const tty = parts[1];
+    const etime = parts.slice(2, -1).join(' ');
+    procs.push({ pid, tty, etime });
   }
   return procs;
 }
@@ -85,34 +87,42 @@ function matchRegistry(cwd, registryRows) {
   return best;
 }
 
-// One entry per unique cwd (several `claude` processes can share a directory —
-// e.g. this very session plus a background one in the same repo).
+// One entry per running `claude` process — deliberately NOT collapsed by cwd.
+// Alp runs most terminals out of the vault root regardless of what he's
+// actually working on in them, so grouping by directory hid exactly the
+// distinction he needs (which terminal is which). tty + pid + start time are
+// what's left to tell two same-directory sessions apart at a glance; the
+// session's own notes (written by hand, or by Claude — see vault.js) are
+// where the real "what is this one for" answer lives.
 async function listSessions() {
   const procs = await listClaudeProcesses();
   const registryRows = vault.listProjects();
-  const byCwd = new Map();
+  const matchCache = new Map(); // cwd -> matchRegistry() result, avoids re-scanning the registry per process
+  const out = [];
 
   for (const proc of procs) {
     const cwd = await cwdForPid(proc.pid);
     if (!cwd) continue;
-    if (!byCwd.has(cwd)) {
-      const match = matchRegistry(cwd, registryRows);
-      const name = match ? match.row.name.replace(/\s*\([^)]*\)\s*/g, ' ').trim() : path.basename(cwd);
-      const slug = slugify(name || path.basename(cwd));
-      byCwd.set(cwd, {
-        cwd,
-        name,
-        slug,
-        status: match ? match.row.status.replace(/\*\*/g, '').slice(0, 240) : null,
-        pids: [],
-        etime: proc.etime,
-        hasNotes: vault.hasSessionNotes(slug),
-      });
-    }
-    byCwd.get(cwd).pids.push(proc.pid);
+    if (!matchCache.has(cwd)) matchCache.set(cwd, matchRegistry(cwd, registryRows));
+    const match = matchCache.get(cwd);
+    const projectName = match ? match.row.name.replace(/\s*\([^)]*\)\s*/g, ' ').trim() : path.basename(cwd);
+    const slug = `${slugify(projectName || path.basename(cwd))}-${proc.pid}`;
+    out.push({
+      cwd,
+      name: projectName,
+      slug,
+      pid: proc.pid,
+      tty: proc.tty,
+      status: match ? match.row.status.replace(/\*\*/g, '').slice(0, 240) : null,
+      pids: [proc.pid], // kept for renderer backward-compat (used to mean "grouped pids")
+      etime: proc.etime,
+      hasNotes: vault.hasSessionNotes(slug),
+    });
   }
 
-  return Array.from(byCwd.values()).sort((a, b) => a.name.localeCompare(b.name));
+  // Group by project name for display (same name, different pid/tty = same
+  // project, different terminal) — sort by name, then oldest terminal first.
+  return out.sort((a, b) => a.name.localeCompare(b.name) || a.etime.localeCompare(b.etime));
 }
 
 module.exports = { listSessions, slugify };

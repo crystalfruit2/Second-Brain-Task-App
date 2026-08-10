@@ -197,6 +197,15 @@ header h1 { font-size: 15px; margin: 0; font-weight: 700; }
   margin-left: 6px;
   font-size: 10px;
 }
+.sess.pinned { background: rgba(89, 212, 153, 0.08); border-color: rgba(89, 212, 153, 0.4); }
+.sess-pinned-badge {
+  margin-left: auto;
+  font-size: 9.5px;
+  color: #59d499;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
 
 /* ---------- session notes overlay ---------- */
 .notes-overlay {

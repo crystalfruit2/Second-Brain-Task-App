@@ -475,11 +475,17 @@ async function loadArticleDraft() {
 }
 
 // ======================= TASKS =======================
-// Same data + write-back IPC the Dashboard's Tasks/Reading columns already use
-// (window.brain.listTasks/toggleTask) — this tab just gives a compact, always-
-// reachable view of the same checklist without opening the full Dashboard window.
+// Scoped to one "active" session at a time (picked from the Dashboard's
+// Sessions panel) — the checkbox items (`- [ ]`) written in that session's
+// own AI/session-notes/<slug>.md, not a vault-wide aggregate. Keeps this tab
+// a short, followable checklist for whatever's actually being worked on right
+// now instead of every open task across the whole vault. Switching which
+// session is active happens in the Dashboard; if this widget is open when
+// that happens, it's pushed the change live (session:activeChanged) so the
+// list updates without needing a manual refresh.
 const tasksList = document.getElementById('tasks-list');
 const tasksStatus = document.getElementById('tasks-status');
+const tasksSessionName = document.getElementById('tasks-session-name');
 const tasksRefreshBtn = document.getElementById('tasks-refresh');
 
 function escapeHtmlT(s) {
@@ -493,16 +499,44 @@ function renderTaskInline(text) {
   return s;
 }
 
-function taskDateLabel(dateStr) {
-  const d = new Date();
-  const stamp = (dd) => `${dd.getFullYear()}-${String(dd.getMonth() + 1).padStart(2, '0')}-${String(dd.getDate()).padStart(2, '0')}`;
-  if (dateStr === stamp(d)) return 'Today';
-  d.setDate(d.getDate() - 1);
-  if (dateStr === stamp(d)) return 'Yesterday';
-  return dateStr;
-}
-
 let tasksBusy = false;
+let activeSession = null; // { slug, name } | null
+
+// ---- session switcher (one-shot ps/lsof fetch, not polled — only runs when
+// the Tasks tab is actually opened or ⟳ is clicked, matching the same
+// battery-conscious rule the Dashboard's poll follows: no shell calls when
+// nobody's looking) ----
+const tasksSwitcher = document.getElementById('tasks-switcher');
+
+async function refreshSwitcher() {
+  let list = [];
+  try {
+    list = await window.brain.listSessions();
+  } catch {
+    tasksSwitcher.innerHTML = '';
+    return;
+  }
+  tasksSwitcher.innerHTML = '';
+  if (!list.length) {
+    tasksSwitcher.innerHTML = '<span class="tasks-switch-empty">No Claude sessions detected</span>';
+    return;
+  }
+  for (const s of list) {
+    const chip = document.createElement('button');
+    chip.className = 'tasks-switch-chip' + (activeSession && activeSession.slug === s.slug ? ' active' : '');
+    chip.textContent = `${s.name} · ${s.pid}`;
+    chip.title = s.cwd;
+    chip.addEventListener('click', async () => {
+      try {
+        await window.brain.setActiveSession(s.slug, s.name);
+      } catch {
+        /* non-fatal */
+      }
+      await refreshTasks();
+    });
+    tasksSwitcher.appendChild(chip);
+  }
+}
 
 function renderTaskItem(it) {
   const li = document.createElement('li');
@@ -514,7 +548,7 @@ function renderTaskItem(it) {
 
   const txt = document.createElement('span');
   txt.className = 'task-text';
-  txt.innerHTML = renderTaskInline(it.text) + (it.kind === 'reading' ? ' <span class="task-tag">reading</span>' : '');
+  txt.innerHTML = renderTaskInline(it.text);
 
   li.appendChild(box);
   li.appendChild(txt);
@@ -535,36 +569,42 @@ function renderTaskItem(it) {
 
 async function refreshTasks() {
   try {
-    const items = await window.brain.listTasks();
+    activeSession = await window.brain.getActiveSession();
+  } catch {
+    activeSession = null;
+  }
+
+  await refreshSwitcher(); // re-render so the active chip's highlight stays in sync
+
+  if (!activeSession) {
+    tasksSessionName.textContent = 'No session selected';
+    tasksStatus.textContent = 'Pick one above, or from the Dashboard';
+    tasksList.innerHTML = '';
+    return;
+  }
+
+  tasksSessionName.textContent = activeSession.name;
+  try {
+    const items = await window.brain.sessionTaskItems(activeSession.slug);
     tasksList.innerHTML = '';
     if (!items.length) {
-      tasksList.innerHTML = '<li class="empty">Nothing open — clean slate.</li>';
-      tasksStatus.textContent = 'Open items, today + last 7 days';
+      tasksStatus.textContent = 'No checklist yet — write some in this session’s notes';
+      tasksList.innerHTML = '<li class="empty">Nothing written for this session yet.</li>';
       return;
     }
     const open = items.filter((i) => !i.checked).length;
-    tasksStatus.textContent = `${open} open · today + last 7 days`;
-
-    const byDate = new Map();
-    for (const it of items) {
-      if (!byDate.has(it.date)) byDate.set(it.date, []);
-      byDate.get(it.date).push(it);
-    }
-    const dates = [...byDate.keys()].sort((a, b) => b.localeCompare(a));
-    for (const date of dates) {
-      const heading = document.createElement('li');
-      heading.className = 'task-date';
-      heading.textContent = taskDateLabel(date);
-      tasksList.appendChild(heading);
-      const group = byDate.get(date).sort((a, b) => Number(a.checked) - Number(b.checked));
-      for (const it of group) tasksList.appendChild(renderTaskItem(it));
-    }
+    tasksStatus.textContent = `${open} of ${items.length} left`;
+    const sorted = [...items].sort((a, b) => Number(a.checked) - Number(b.checked));
+    for (const it of sorted) tasksList.appendChild(renderTaskItem(it));
   } catch (e) {
     tasksList.innerHTML = `<li class="empty">Failed to load: ${escapeHtmlT(String(e && e.message ? e.message : e))}</li>`;
   }
 }
 
 tasksRefreshBtn.addEventListener('click', refreshTasks);
+if (window.brain.onActiveSessionChanged) {
+  window.brain.onActiveSessionChanged(() => refreshTasks());
+}
 
 // ======================= init =======================
 document.addEventListener('keydown', (e) => {

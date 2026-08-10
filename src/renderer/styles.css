@@ -233,17 +233,34 @@ body.brk .primary { background: var(--break); color: #fff; }
 
 /* ---------- tasks view ---------- */
 #view-tasks { padding-top: 8px; }
-.tasks-recent { border-top: none; padding-top: 0; }
+.tasks-head { border: none; padding: 0; }
+.tasks-session-name { font-size: 13px; font-weight: 700; flex: 1; }
+#tasks-status { margin-top: -4px; }
+.tasks-recent { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 6px; }
 .tasks-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
 
-.task-date {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-  padding: 8px 2px 4px;
+.tasks-switcher {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding-bottom: 2px;
 }
-.task-date:first-child { padding-top: 2px; }
+.tasks-switch-chip {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tasks-switch-chip:hover { color: var(--text); border-color: var(--accent); }
+.tasks-switch-chip.active { background: rgba(110, 168, 254, 0.18); color: var(--text); border-color: var(--accent); }
+.tasks-switch-empty { color: var(--muted); font-size: 11px; padding: 3px 0; }
 
 .task-item {
   display: flex;
@@ -275,15 +292,6 @@ body.brk .primary { background: var(--break); color: #fff; }
 
 .task-text { word-break: break-word; }
 .task-text code { background: var(--panel); padding: 0 4px; border-radius: 4px; font-size: 11px; }
-.task-tag {
-  display: inline-block;
-  margin-left: 5px;
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--accent);
-  opacity: 0.8;
-}
 
 /* ---------- dock footer ---------- */
 .dock-bar {

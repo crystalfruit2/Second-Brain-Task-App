@@ -478,6 +478,26 @@ function readSessionNotes(slug) {
   return content.replace(/^---\n[\s\S]*?\n---\n\n?/, '');
 }
 
+// Checkbox items (`- [ ]`/`- [x]`) written inside a session's own notes file —
+// the widget's Tasks tab reads *this*, not the vault-wide daily-note tasks,
+// so it stays a short, hand-written checklist for whatever you're actually
+// following through right now instead of a 70-item firehose. Reuses the same
+// parseCheckboxLines()/toggleTaskLine() the daily Tasks/Reading columns use —
+// toggleTaskLine already takes a plain (file, line, raw) triple, so no new
+// write-back logic needed, just a different source file.
+function listSessionTaskItems(slug) {
+  const file = sessionNotesPath(slug);
+  if (!fs.existsSync(file)) return [];
+  const content = fs.readFileSync(file, 'utf8');
+  return parseCheckboxLines(content).map((it) => ({
+    file,
+    line: it.lineIndex,
+    raw: it.raw,
+    text: it.text,
+    checked: it.checked,
+  }));
+}
+
 function saveSessionNotes(slug, name, text) {
   const dir = sessionNotesDir();
   fs.mkdirSync(dir, { recursive: true });
@@ -506,4 +526,5 @@ module.exports = {
   readSessionNotes,
   saveSessionNotes,
   hasSessionNotes,
+  listSessionTaskItems,
 };

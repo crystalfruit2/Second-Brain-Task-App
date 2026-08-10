@@ -155,10 +155,18 @@ let notesHasContentBySlug = new Set();
 let activeSlug = null;
 let notesSaveTimer = null;
 
+// The one session the widget's Tasks tab currently follows — clicking a card
+// here both opens its notes (below) and pins it as that active session, per
+// Alp's ask: "go to the main tasks screen and choose the other terminal's
+// job." Loaded once on startup so the Dashboard reflects whatever was already
+// pinned from a previous session, not just clicks made in this window.
+let pinnedSlug = null;
+
 function renderSession(s) {
   const div = document.createElement('div');
   const hasNotes = notesHasContentBySlug.has(s.slug) || s.hasNotes;
-  div.className = 'sess' + (hasNotes ? ' has-notes' : '');
+  const isPinned = s.slug === pinnedSlug;
+  div.className = 'sess' + (hasNotes ? ' has-notes' : '') + (isPinned ? ' pinned' : '');
 
   const head = document.createElement('div');
   head.className = 'sess-head';
@@ -169,11 +177,19 @@ function renderSession(s) {
   name.innerHTML = renderInline(s.name);
   head.appendChild(dot);
   head.appendChild(name);
+  if (isPinned) {
+    const badge = document.createElement('span');
+    badge.className = 'sess-pinned-badge';
+    badge.textContent = '● active in Tasks tab';
+    head.appendChild(badge);
+  }
 
   const meta = document.createElement('div');
   meta.className = 'sess-meta';
-  const pidLabel = s.pids.length > 1 ? `${s.pids.length} terminals` : `pid ${s.pids[0]}`;
-  meta.textContent = `${pidLabel} · open ${s.etime}`;
+  // Same project name can appear on multiple cards when several terminals share
+  // a cwd (e.g. everything run out of the vault) — pid/tty/open-time are what's
+  // left to tell them apart until you've written something identifying in notes.
+  meta.textContent = `pid ${s.pid} · ${s.tty} · open ${s.etime}`;
 
   const pathEl = document.createElement('div');
   pathEl.className = 'sess-path';
@@ -182,7 +198,17 @@ function renderSession(s) {
   div.appendChild(head);
   div.appendChild(meta);
   div.appendChild(pathEl);
-  div.addEventListener('click', () => openNotes(s));
+  div.addEventListener('click', async () => {
+    pinnedSlug = s.slug;
+    try {
+      await window.brain.setActiveSession(s.slug, s.name);
+    } catch {
+      /* non-fatal — notes still open below even if pinning failed */
+    }
+    document.querySelectorAll('.sess').forEach((el) => el.classList.remove('pinned'));
+    div.classList.add('pinned');
+    openNotes(s);
+  });
   return div;
 }
 
@@ -198,8 +224,18 @@ function renderSessions(list) {
   for (const s of list) el.appendChild(renderSession(s));
 }
 
+async function loadPinnedSession() {
+  try {
+    const active = await window.brain.getActiveSession();
+    pinnedSlug = active ? active.slug : null;
+  } catch {
+    pinnedSlug = null;
+  }
+}
+
 async function loadSessions() {
   try {
+    await loadPinnedSession();
     const list = await window.brain.listSessions();
     renderSessions(list);
   } catch (e) {

@@ -93,11 +93,16 @@
     </main>
 
     <!-- ============ TASKS VIEW ============ -->
+    <!-- Scoped to whichever session is "active" — pick right here, or from the
+         Dashboard's Sessions panel, no vault-wide task dump — a short,
+         hand-written checklist for what's actually being followed through now. -->
     <main id="view-tasks" class="hidden">
-      <div class="row">
-        <span class="hint" id="tasks-status">Open items, today + last 7 days</span>
-        <button id="tasks-refresh" class="ghost no-drag">⟳</button>
+      <div class="row tasks-head">
+        <span class="tasks-session-name" id="tasks-session-name">No session selected</span>
+        <button id="tasks-refresh" class="ghost no-drag" title="Refresh session list">⟳</button>
       </div>
+      <div class="tasks-switcher no-drag" id="tasks-switcher"></div>
+      <div class="hint" id="tasks-status">Pick a session above, or from the Dashboard's Sessions panel</div>
       <div class="recent tasks-recent">
         <ul id="tasks-list" class="tasks-list"></ul>
       </div>
