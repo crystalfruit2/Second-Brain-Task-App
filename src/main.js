@@ -3,11 +3,42 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const vault = require('./vault');
+const sessions = require('./sessions');
 
 let notesWin = null;
 let dashboardWin = null;
 let tray = null;
 let isQuitting = false;
+
+// Sessions list is polled on an interval, but only while the Dashboard window
+// is open and only that one dashboardWin gets pushed updates — a hidden/closed
+// dashboard costs zero `ps`/`lsof` calls. 10s keeps it feeling live without
+// spinning up shell processes needlessly on battery.
+const SESSION_POLL_MS = 10_000;
+let sessionPollTimer = null;
+
+async function pollSessions() {
+  if (!dashboardWin || dashboardWin.isDestroyed()) return;
+  try {
+    const list = await sessions.listSessions();
+    if (dashboardWin && !dashboardWin.isDestroyed()) {
+      dashboardWin.webContents.send('sessions:update', list);
+    }
+  } catch {
+    /* non-fatal — next tick tries again */
+  }
+}
+
+function startSessionPolling() {
+  if (sessionPollTimer) return;
+  pollSessions();
+  sessionPollTimer = setInterval(pollSessions, SESSION_POLL_MS);
+}
+
+function stopSessionPolling() {
+  clearInterval(sessionPollTimer);
+  sessionPollTimer = null;
+}
 
 const ICON_PATH = path.join(__dirname, '..', 'assets', 'icon.png');
 const STATE_FILE = path.join(app.getPath('userData'), 'window-state.json');
@@ -146,9 +177,9 @@ function createDashboardWindow() {
     return;
   }
   dashboardWin = new BrowserWindow({
-    width: 980,
-    height: 720,
-    minWidth: 640,
+    width: 1180,
+    height: 760,
+    minWidth: 760,
     minHeight: 480,
     icon: ICON_PATH,
     title: 'Second Brain — Dashboard',
@@ -160,16 +191,22 @@ function createDashboardWindow() {
     },
   });
   dashboardWin.loadFile(path.join(__dirname, 'renderer', 'dashboard.html'));
+  dashboardWin.webContents.once('did-finish-load', startSessionPolling);
   dashboardWin.on('closed', () => {
     dashboardWin = null;
+    stopSessionPolling();
   });
 }
 
 const PIN_SCRIPT = path.join(__dirname, 'native', 'pin-window.ps1');
+const IS_WINDOWS = process.platform === 'win32';
 
 // Toggle Windows "always on top" for the window whose title matches (default: Claude).
 // Runs the bundled PowerShell/Win32 helper out-of-process; resolves to 'PINNED' | 'UNPINNED' | 'NOTFOUND'.
+// Win32's SetWindowPos(HWND_TOPMOST) has no macOS equivalent reachable from AppleScript/System Events,
+// so this feature is Windows-only; the tray item is hidden on Mac rather than silently failing.
 function pinExternalWindow(titleMatch = 'Claude') {
+  if (!IS_WINDOWS) return Promise.resolve('UNSUPPORTED');
   return new Promise((resolve) => {
     execFile(
       'powershell.exe',
@@ -194,7 +231,7 @@ function createTray() {
   const menu = Menu.buildFromTemplate([
     { label: 'Show / hide notes', click: toggleNotesWindow },
     { label: 'Dashboard', click: createDashboardWindow },
-    { label: 'Pin Claude on top', click: () => pinExternalWindow('Claude') },
+    ...(IS_WINDOWS ? [{ label: 'Pin Claude on top', click: () => pinExternalWindow('Claude') }] : []),
     {
       label: 'Dock',
       submenu: [
@@ -219,6 +256,18 @@ function createTray() {
   tray.on('click', toggleNotesWindow);
 }
 
+// Right-click-on-Dock-icon menu, mirroring the tray menu's two most-used items.
+// Mac-only — Menu.app.dock doesn't exist on other platforms.
+function setDockMenu() {
+  if (process.platform !== 'darwin') return;
+  app.dock.setMenu(
+    Menu.buildFromTemplate([
+      { label: 'Show / hide notes', click: toggleNotesWindow },
+      { label: 'Dashboard', click: createDashboardWindow },
+    ])
+  );
+}
+
 // ---- IPC: renderer -> main ----
 ipcMain.handle('note:append', (_e, text) => vault.appendNote(text));
 ipcMain.handle('note:today', () => vault.readTodayNotes());
@@ -226,6 +275,9 @@ ipcMain.handle('pomodoro:log', (_e, session) => vault.appendPomodoroSession(sess
 ipcMain.handle('tasks:list', () => vault.listTasks());
 ipcMain.handle('tasks:toggle', (_e, { file, line, raw }) => vault.toggleTaskLine(file, line, raw));
 ipcMain.handle('projects:list', () => vault.listProjects());
+ipcMain.handle('sessions:list', () => sessions.listSessions());
+ipcMain.handle('session:notesGet', (_e, slug) => vault.readSessionNotes(slug));
+ipcMain.handle('session:notesSave', (_e, { slug, name, text }) => vault.saveSessionNotes(slug, name, text));
 ipcMain.handle('window:pinClaude', () => pinExternalWindow('Claude'));
 ipcMain.handle('health:cigCount', () => vault.getCigCount());
 ipcMain.handle('health:cigLog', (_e, delta) => vault.logCigarette(delta));
@@ -249,6 +301,7 @@ ipcMain.on('window:dashboard', () => createDashboardWindow());
 
 app.whenReady().then(() => {
   createTray();
+  setDockMenu();
   createNotesWindow();
   notesWin.once('ready-to-show', () => notesWin.show());
 
@@ -261,3 +314,5 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (isQuitting) app.quit();
 });
+
+app.on('before-quit', stopSessionPolling);

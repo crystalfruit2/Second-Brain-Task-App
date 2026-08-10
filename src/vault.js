@@ -449,6 +449,45 @@ function clearArticleDraft() {
   if (fs.existsSync(file)) fs.unlinkSync(file);
 }
 
+// ---------------------------------------------------------------------------
+// Session notes: a free-form scratchpad per Claude Code session (matched by
+// slug — see src/sessions.js), so re-opening a terminal you haven't touched in
+// days shows the "read this first" context you left yourself, e.g. a review
+// checklist. One real markdown file per session under AI/session-notes/, not
+// a JSON blob — so these are readable/editable from inside a vault session too.
+// ---------------------------------------------------------------------------
+
+function sessionNotesDir() {
+  return path.join(VAULT_PATH, 'AI', 'session-notes');
+}
+
+function sessionNotesPath(slug) {
+  const safe = String(slug || 'session').replace(/[^a-z0-9-]/gi, '-');
+  return path.join(sessionNotesDir(), `${safe}.md`);
+}
+
+function hasSessionNotes(slug) {
+  return fs.existsSync(sessionNotesPath(slug));
+}
+
+function readSessionNotes(slug) {
+  const file = sessionNotesPath(slug);
+  if (!fs.existsSync(file)) return '';
+  const content = fs.readFileSync(file, 'utf8');
+  // Strip the frontmatter header back out — the widget edits body text only.
+  return content.replace(/^---\n[\s\S]*?\n---\n\n?/, '');
+}
+
+function saveSessionNotes(slug, name, text) {
+  const dir = sessionNotesDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const file = sessionNotesPath(slug);
+  const fm = ['---', 'tags:', '  - session-notes', `session: ${name || slug}`, `updated: ${todayStamp()}`, '---', '', ''];
+  const body = String(text || '');
+  fs.writeFileSync(file, fm.join('\n') + body + (body.endsWith('\n') ? '' : '\n'), 'utf8');
+  return { file };
+}
+
 module.exports = {
   appendNote,
   readTodayNotes,
@@ -464,4 +503,7 @@ module.exports = {
   readArticleDraft,
   saveArticleDraft,
   clearArticleDraft,
+  readSessionNotes,
+  saveSessionNotes,
+  hasSessionNotes,
 };

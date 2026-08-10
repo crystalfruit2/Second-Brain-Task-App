@@ -28,8 +28,9 @@ A small Electron desktop app with two windows:
    or docked flush to a screen edge). Three tabs: **Notes** (quick capture),
    **Timer** (Focus / Pomodoro), and **Article** (structured reading notes).
    This is the window that's meant to always be around, tray-toggleable.
-2. **The Dashboard** — a normal window, three columns: Tasks, Reading,
-   Projects. This is the "what should I be doing" view. Opened from the
+2. **The Dashboard** — a normal window, four columns: Tasks, Reading,
+   Projects, Sessions. This is the "what should I be doing" view, plus (as
+   of 2026-08-10) "what am I actually running right now." Opened from the
    tray or a button in the widget header, not auto-shown on launch.
 
 Both windows read and write my actual vault directly — there's no database,
@@ -242,6 +243,10 @@ The Projects panel shows name + a 2-line-clamped status (some project
 statuses, DARE-MOT especially, are a huge running log — I don't want that
 dominating the panel) — click a project card to expand it.
 
+- **Sessions** (added 2026-08-10) — see the dedicated writeup below. Live
+  list of my running Claude Code terminals, matched to project names, click
+  one for a notes editor.
+
 There's a **⊞ dashboard button** in the Notes widget header too, so I don't
 have to go through the tray menu every time.
 
@@ -289,7 +294,12 @@ Everything the renderer can do, end to end:
 | `getArticleDraft()` | Read back the in-progress article draft, if any |
 | `saveArticleDraft(draft)` | Debounced whole-form autosave to `AI/article-draft.json` |
 | `clearArticleDraft()` | Discard the in-progress draft (Clear button) |
+| `listSessions()` | One-shot fetch of currently-running `claude` sessions (ps/lsof + registry match) |
+| `onSessionsUpdate(cb)` | Subscribe to the Dashboard's live 10s session poll (main process pushes, doesn't wait to be asked) |
+| `getSessionNotes(slug)` / `saveSessionNotes({slug,name,text})` | Read/write a session's notes file at `AI/session-notes/<slug>.md` |
 | `hide()` / `quit()` / `dock(edge)` | Window chrome controls |
+
+The Notes widget also gained a fourth tab, **Tasks** (2026-08-10) — same `listTasks()`/`toggleTask()` calls the Dashboard's Tasks/Reading columns already used, just rendered compact enough for the small widget: grouped by date, unchecked-first, click anywhere on a row to toggle, no separate window needed to check something off.
 
 Every one of these is a thin `ipcRenderer.invoke`/`.send` wrapped in
 `contextBridge.exposeInMainWorld('brain', {...})` in `preload.js` — the
@@ -302,13 +312,14 @@ Node-side except through this explicit list.
 src/
   main.js              Electron main: both windows, tray, all IPC handlers
   preload.js            contextBridge → window.brain
-  vault.js               all vault filesystem logic (notes, pomodoro log, tasks, projects)
-  config.js               vault path resolution (env override)
+  vault.js               all vault filesystem logic (notes, pomodoro log, tasks, projects, session notes)
+  config.js               vault path resolution (env override, Mac/Windows candidates)
+  sessions.js              Claude session detection (ps/lsof) + project-registry matching, no Electron dep
   native/
-    pin-window.ps1        Win32 always-on-top shim (bundled copy, see pin-window-integration.md)
+    pin-window.ps1        Win32 always-on-top shim (bundled copy, see pin-window-integration.md; Windows-only)
   renderer/
     index.html / renderer.js / styles.css     the Notes/Timer/Article widget UI
-    dashboard.html / dashboard.js / dashboard.css   the Tasks/Reading/Projects dashboard UI
+    dashboard.html / dashboard.js / dashboard.css   the Tasks/Reading/Projects/Sessions dashboard UI
 docs/
   ARCHITECTURE.md          this file
   pin-window-integration.md   the pin-Claude-window feature, written up separately
@@ -339,20 +350,127 @@ docs/
   frontmatter, plus a debounced draft autosave so an in-progress read
   survives a tab switch or a quit (see above).
 
+## Mac port + the Sessions panel (2026-08-10)
+
+I wanted this running on my Mac too, with a real Dock icon, and I wanted a
+way to see all the Claude Code terminals I have open across different
+projects at a glance — I run a lot of them in parallel and kept losing track
+of which one was doing what. And for each one, I wanted my own notes
+attached, so re-opening a terminal I haven't touched in days shows me the
+"pick up here" context I left myself instead of making me re-derive it.
+
+**Getting it running on Mac:**
+
+- `config.js` was hardcoded to my Windows path. Now it tries
+  `~/Documents/Projects/second_brain` (Mac) first, falls back to
+  `~/Desktop/Projects/second_brain` (Windows), `SECOND_BRAIN_VAULT` still
+  overrides both.
+- The pin-Claude-window feature is Win32 `SetWindowPos` — there's no
+  AppleScript/System Events equivalent for "always on top" for an arbitrary
+  app's window on macOS, so I didn't try to port it. It's gated behind
+  `process.platform === 'win32'` in both main and the renderer — the button
+  and tray item just don't show up on Mac instead of doing nothing when
+  clicked.
+- A normal Electron app already gets a Dock icon by default — I never called
+  `app.dock.hide()` — so that part needed no work. I did add a right-click
+  Dock menu (Show/hide notes, Dashboard) mirroring the tray, since that's
+  the natural gesture on Mac.
+- Added `npm run build:mac` (electron-builder, `dir`/`zip` target,
+  `identity: null`) so I can build a real `.app` and drag it into
+  `/Applications` instead of always launching from a terminal. Unsigned is
+  fine — this is a personal tool, not something I'm distributing.
+
+**The Sessions panel:**
+
+`src/sessions.js` is a new, Electron-independent module. It shells out to
+`ps -axo pid=,etime=,comm=` to find every process actually named `claude`,
+then `lsof -a -p <pid> -d cwd -Fn` on each PID to get its working directory.
+Multiple terminals in the same repo collapse into one session card (their
+PIDs get listed together) rather than showing as duplicates.
+
+To turn a raw cwd into a name I'd recognize, it matches against
+`Resources/project-registry.md` — pulls every `/Users/...` or `~/...` style
+path out of each row's Local-path cell (those cells mix Mac and Windows
+paths plus prose, separated by `·`) and picks the longest prefix match
+against the session's cwd. Falls back to the directory's own basename if
+nothing in the registry matches.
+
+Notes are the whole point of this panel, so I didn't want them buried in a
+JSON blob — each session gets a real markdown file at
+`AI/session-notes/<slug>.md`, readable and editable from a vault-side Claude
+session too, not just from inside this app. `vault.js` grew
+`readSessionNotes`/`saveSessionNotes`/`hasSessionNotes` for that. Clicking a
+session in the Dashboard's new 4th panel opens a modal textarea that
+autosaves 600ms after I stop typing — same debounce pattern the Article tab
+already used for its draft.
+
+**Efficiency** mattered here specifically because this machine is a laptop
+and I don't want a background process burning battery. `ps`/`lsof` only run
+on a 10-second timer, and only while the Dashboard window is actually open —
+closing the Dashboard stops the timer entirely, so the always-open Notes
+widget costs nothing extra for this feature existing.
+
+**Two real bugs, caught before I trusted this:** first pass against my
+actual `project-registry.md`, every session under `/Users/alpeldam` (i.e.
+all of them) was matching to whichever registry row happened to contain a
+bare `~` first in file order (Cursor Buddy's row) — a `~` with nothing after
+it was matching as "home directory," a valid but useless prefix that beat
+the real, longer, correct path purely on file order. Second: registry rows
+that write their Mac path with a trailing slash (most of them) were failing
+their own prefix check, because appending a path separator to an
+already-slash-terminated string doubles it. Fixed both (require `~/` not
+bare `~`; strip trailing slashes before comparing) and re-verified against
+the real registry — my own vault session now correctly resolves to "Second
+Brain," not "Cursor Buddy."
+
+**Two real bugs found and fixed getting `build:mac` to actually work, same
+day, once I ran it myself:**
+
+1. **The hang wasn't codesigning at all.** A flaky first Electron-zip
+   download had left a corrupted cache entry at
+   `~/Library/Caches/electron/electron-v33.4.11-darwin-arm64.zip` — 361MB
+   instead of the real ~99.7MB, `unzip -t` showed bad zip offsets starting
+   around file #237. `app-builder unpack-electron` was silently spinning on
+   it forever (0% CPU, no error, no progress). Deleted the corrupted cache
+   entry and the build completed in ~35 seconds.
+2. **Once it built, double-clicking the `.app` did nothing.** Root cause:
+   the raw Electron binary ships with its own baked-in linker/ad-hoc
+   signature from Electron's own release build. `identity: null` correctly
+   skips *my* signing step, but doesn't touch that pre-existing signature —
+   and electron-builder then customizes the bundle on top of it (renames the
+   executable, rewrites `Info.plist` with my `appId`/`productName`), which
+   invalidates that original signature without anyone re-signing over it.
+   `codesign -dv` on the built app showed `Info.plist=not bound` and `spctl`
+   said "code has no resources but signature indicates they must be
+   present" — a broken seal, not a policy rejection. macOS silently refuses
+   to launch a bundle with an invalid signature rather than showing a
+   Gatekeeper dialog, which is why it looked like nothing happened at all.
+   Fix: `codesign --deep --force --sign - "dist/mac-arm64/Second Brain.app"`
+   after packaging — a real ad-hoc self-sign that reflects the actual final
+   contents, not the stale one baked into the raw Electron binary. Now
+   chained onto `build:mac` itself in `package.json` so this can't regress
+   silently on a future rebuild.
+
 ## What's still open, in my own priority order
 
-1. **Global keyboard shortcut** to summon the Notes widget from anywhere —
+1. **Look at what got built on 2026-08-10** — the Sessions panel, the Tasks
+   tab, notes modal, and Dock menu were never visually confirmed by me, only
+   logic-tested. `npm start` (or the now-working packaged `.app`) and
+   actually look.
+2. **Global keyboard shortcut** to summon the Notes widget from anywhere —
    deferred since v0.1, still not built.
-2. **Should the Dashboard auto-show on launch instead of Notes?** Right now
+3. **Should the Dashboard auto-show on launch instead of Notes?** Right now
    both are tray-triggered but only Notes auto-shows when the app starts.
    Haven't decided — leaning toward leaving it as-is since Notes is the
    thing I reach for more often, but worth revisiting once the dashboard
    gets more use.
-3. **Phone/remote access** — explicitly deferred to v0.1+, not scoped yet.
+4. **Phone/remote access** — explicitly deferred to v0.1+, not scoped yet.
    Everything right now is local-only, one machine at a time.
-4. **The pin-window feature has a duplicated implementation** between this
+5. **The pin-window feature has a duplicated implementation** between this
    app and a standalone vault script — see the separate writeup for the
-   tradeoff, I haven't decided whether to de-duplicate it.
+   tradeoff, I haven't decided whether to de-duplicate it. Now also
+   Windows-only outright (see the Mac port section above), which makes
+   de-duplicating it lower priority, not higher.
 
 ## Working agreement I set for this repo
 

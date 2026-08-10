@@ -4,14 +4,30 @@
   "description": "Always-on-top note capture + task dashboard backed by the Second Brain vault",
   "main": "src/main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build:mac": "electron-builder --mac --arm64 && codesign --deep --force --sign - \"dist/mac-arm64/Second Brain.app\""
   },
   "author": "Alp Eldam",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^33.2.0"
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
   },
   "dependencies": {
     "gray-matter": "^4.0.3"
+  },
+  "build": {
+    "appId": "com.alp.secondbraintaskapp",
+    "productName": "Second Brain",
+    "directories": {
+      "output": "dist"
+    },
+    "files": ["src/**/*", "assets/**/*", "package.json"],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon-mac.png",
+      "target": ["dir", "zip"],
+      "identity": null
+    }
   }
 }

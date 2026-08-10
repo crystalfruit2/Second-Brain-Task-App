@@ -2,23 +2,29 @@
 const tabNotes = document.getElementById('tab-notes');
 const tabTimer = document.getElementById('tab-timer');
 const tabArticle = document.getElementById('tab-article');
+const tabTasks = document.getElementById('tab-tasks');
 const viewNotes = document.getElementById('view-notes');
 const viewTimer = document.getElementById('view-timer');
 const viewArticle = document.getElementById('view-article');
+const viewTasks = document.getElementById('view-tasks');
 
 function showView(which) {
   tabNotes.classList.toggle('active', which === 'notes');
   tabTimer.classList.toggle('active', which === 'timer');
   tabArticle.classList.toggle('active', which === 'article');
+  tabTasks.classList.toggle('active', which === 'tasks');
   viewNotes.classList.toggle('hidden', which !== 'notes');
   viewTimer.classList.toggle('hidden', which !== 'timer');
   viewArticle.classList.toggle('hidden', which !== 'article');
+  viewTasks.classList.toggle('hidden', which !== 'tasks');
   if (which === 'notes') input.focus();
   if (which === 'article') aTitle.focus();
+  if (which === 'tasks') refreshTasks();
 }
 tabNotes.addEventListener('click', () => showView('notes'));
 tabTimer.addEventListener('click', () => showView('timer'));
 tabArticle.addEventListener('click', () => showView('article'));
+tabTasks.addEventListener('click', () => showView('tasks'));
 
 // ======================= cig counter =======================
 const cigBtn = document.getElementById('cig-counter');
@@ -50,22 +56,28 @@ cigBtn.addEventListener('contextmenu', (e) => {
 refreshCigCount();
 
 // ======================= window buttons =======================
+// Win32 SetWindowPos(HWND_TOPMOST) has no macOS equivalent — hide the button there
+// instead of letting every click silently no-op.
 const pinBtn = document.getElementById('pin-claude');
-pinBtn.addEventListener('click', async () => {
-  pinBtn.disabled = true;
-  try {
-    const result = await window.brain.pinClaude(); // 'PINNED' | 'UNPINNED' | 'NOTFOUND'
-    pinBtn.classList.toggle('active', result === 'PINNED');
-    pinBtn.title =
-      result === 'NOTFOUND'
-        ? 'No Claude window found — open it first'
-        : result === 'PINNED'
-          ? 'Claude pinned on top (click to unpin)'
-          : 'Pin Claude window on top';
-  } finally {
-    pinBtn.disabled = false;
-  }
-});
+if (window.brain.platform !== 'win32') {
+  pinBtn.style.display = 'none';
+} else {
+  pinBtn.addEventListener('click', async () => {
+    pinBtn.disabled = true;
+    try {
+      const result = await window.brain.pinClaude(); // 'PINNED' | 'UNPINNED' | 'NOTFOUND'
+      pinBtn.classList.toggle('active', result === 'PINNED');
+      pinBtn.title =
+        result === 'NOTFOUND'
+          ? 'No Claude window found — open it first'
+          : result === 'PINNED'
+            ? 'Claude pinned on top (click to unpin)'
+            : 'Pin Claude window on top';
+    } finally {
+      pinBtn.disabled = false;
+    }
+  });
+}
 
 document.getElementById('dashboard').addEventListener('click', () => window.brain.openDashboard());
 document.getElementById('hide').addEventListener('click', () => window.brain.hide());
@@ -461,6 +473,98 @@ async function loadArticleDraft() {
     /* non-fatal */
   }
 }
+
+// ======================= TASKS =======================
+// Same data + write-back IPC the Dashboard's Tasks/Reading columns already use
+// (window.brain.listTasks/toggleTask) — this tab just gives a compact, always-
+// reachable view of the same checklist without opening the full Dashboard window.
+const tasksList = document.getElementById('tasks-list');
+const tasksStatus = document.getElementById('tasks-status');
+const tasksRefreshBtn = document.getElementById('tasks-refresh');
+
+function escapeHtmlT(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function renderTaskInline(text) {
+  let s = escapeHtmlT(String(text || ''));
+  s = s.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, p, alias) => alias || p.split('/').pop());
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  return s;
+}
+
+function taskDateLabel(dateStr) {
+  const d = new Date();
+  const stamp = (dd) => `${dd.getFullYear()}-${String(dd.getMonth() + 1).padStart(2, '0')}-${String(dd.getDate()).padStart(2, '0')}`;
+  if (dateStr === stamp(d)) return 'Today';
+  d.setDate(d.getDate() - 1);
+  if (dateStr === stamp(d)) return 'Yesterday';
+  return dateStr;
+}
+
+let tasksBusy = false;
+
+function renderTaskItem(it) {
+  const li = document.createElement('li');
+  li.className = 'task-item' + (it.checked ? ' checked' : '');
+
+  const box = document.createElement('span');
+  box.className = 'task-check';
+  box.textContent = it.checked ? '✓' : '';
+
+  const txt = document.createElement('span');
+  txt.className = 'task-text';
+  txt.innerHTML = renderTaskInline(it.text) + (it.kind === 'reading' ? ' <span class="task-tag">reading</span>' : '');
+
+  li.appendChild(box);
+  li.appendChild(txt);
+  li.addEventListener('click', async () => {
+    if (tasksBusy) return;
+    tasksBusy = true;
+    try {
+      await window.brain.toggleTask({ file: it.file, line: it.line, raw: it.raw });
+      await refreshTasks();
+    } catch (e) {
+      tasksStatus.textContent = 'Could not update — ' + (e && e.message ? e.message : e);
+    } finally {
+      tasksBusy = false;
+    }
+  });
+  return li;
+}
+
+async function refreshTasks() {
+  try {
+    const items = await window.brain.listTasks();
+    tasksList.innerHTML = '';
+    if (!items.length) {
+      tasksList.innerHTML = '<li class="empty">Nothing open — clean slate.</li>';
+      tasksStatus.textContent = 'Open items, today + last 7 days';
+      return;
+    }
+    const open = items.filter((i) => !i.checked).length;
+    tasksStatus.textContent = `${open} open · today + last 7 days`;
+
+    const byDate = new Map();
+    for (const it of items) {
+      if (!byDate.has(it.date)) byDate.set(it.date, []);
+      byDate.get(it.date).push(it);
+    }
+    const dates = [...byDate.keys()].sort((a, b) => b.localeCompare(a));
+    for (const date of dates) {
+      const heading = document.createElement('li');
+      heading.className = 'task-date';
+      heading.textContent = taskDateLabel(date);
+      tasksList.appendChild(heading);
+      const group = byDate.get(date).sort((a, b) => Number(a.checked) - Number(b.checked));
+      for (const it of group) tasksList.appendChild(renderTaskItem(it));
+    }
+  } catch (e) {
+    tasksList.innerHTML = `<li class="empty">Failed to load: ${escapeHtmlT(String(e && e.message ? e.message : e))}</li>`;
+  }
+}
+
+tasksRefreshBtn.addEventListener('click', refreshTasks);
 
 // ======================= init =======================
 document.addEventListener('keydown', (e) => {

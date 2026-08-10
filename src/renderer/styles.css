@@ -231,6 +231,60 @@ body.brk .primary { background: var(--break); color: #fff; }
 #a-thoughts { min-height: 64px; }
 #view-article .row { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 2px; }
 
+/* ---------- tasks view ---------- */
+#view-tasks { padding-top: 8px; }
+.tasks-recent { border-top: none; padding-top: 0; }
+.tasks-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
+
+.task-date {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding: 8px 2px 4px;
+}
+.task-date:first-child { padding-top: 2px; }
+
+.task-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 5px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.task-item:hover { background: var(--panel); }
+.task-item.checked .task-text { color: var(--muted); text-decoration: line-through; }
+
+.task-check {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--muted);
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+}
+.task-item.checked .task-check { background: var(--accent); border-color: var(--accent); color: #10131a; }
+
+.task-text { word-break: break-word; }
+.task-text code { background: var(--panel); padding: 0 4px; border-radius: 4px; font-size: 11px; }
+.task-tag {
+  display: inline-block;
+  margin-left: 5px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  opacity: 0.8;
+}
+
 /* ---------- dock footer ---------- */
 .dock-bar {
   display: flex;

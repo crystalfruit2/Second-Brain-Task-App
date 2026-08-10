@@ -1,12 +1,17 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('brain', {
+  platform: process.platform, // 'darwin' | 'win32' | ... — lets renderer hide Windows-only UI on Mac
   appendNote: (text) => ipcRenderer.invoke('note:append', text),
   todayNotes: () => ipcRenderer.invoke('note:today'),
   logPomodoro: (session) => ipcRenderer.invoke('pomodoro:log', session),
   listTasks: () => ipcRenderer.invoke('tasks:list'),
   toggleTask: (item) => ipcRenderer.invoke('tasks:toggle', item),
   listProjects: () => ipcRenderer.invoke('projects:list'),
+  listSessions: () => ipcRenderer.invoke('sessions:list'),
+  onSessionsUpdate: (cb) => ipcRenderer.on('sessions:update', (_e, list) => cb(list)),
+  getSessionNotes: (slug) => ipcRenderer.invoke('session:notesGet', slug),
+  saveSessionNotes: (payload) => ipcRenderer.invoke('session:notesSave', payload),
   openDashboard: () => ipcRenderer.send('window:dashboard'),
   pinClaude: () => ipcRenderer.invoke('window:pinClaude'),
   cigCount: () => ipcRenderer.invoke('health:cigCount'),

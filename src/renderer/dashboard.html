@@ -9,7 +9,7 @@
   <body>
     <header>
       <h1>Second Brain</h1>
-      <span class="subtitle">Tasks, reading, and projects pulled live from the vault</span>
+      <span class="subtitle">Tasks, reading, projects, and live Claude sessions — pulled live from the vault</span>
       <button id="refresh" title="Refresh">⟳ Refresh</button>
     </header>
 
@@ -37,7 +37,26 @@
         </div>
         <div class="panel-body" id="list-projects"></div>
       </section>
+
+      <section class="panel" id="panel-sessions">
+        <div class="panel-head">
+          <span class="panel-title">Sessions</span>
+          <span class="count" id="count-sessions">0</span>
+        </div>
+        <div class="panel-body" id="list-sessions"></div>
+      </section>
     </main>
+
+    <div id="notes-overlay" class="notes-overlay hidden">
+      <div class="notes-panel">
+        <div class="notes-head">
+          <span id="notes-title">Session notes</span>
+          <span class="notes-saved" id="notes-saved"></span>
+          <button id="notes-close" title="Close">✕</button>
+        </div>
+        <textarea id="notes-body" placeholder="Notes for this session — e.g. a 'read in this order' checklist for picking this back up..."></textarea>
+      </div>
+    </div>
 
     <script src="dashboard.js"></script>
   </body>
