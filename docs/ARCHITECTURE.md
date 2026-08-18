@@ -698,10 +698,12 @@ clears its own busy state.
 4. **Terminal hand-off is macOS-only** (`osascript` + Terminal.app). It throws a
    clear message on other platforms rather than silently doing nothing, same
    approach as the Windows-only pin button.
-5. **Quick actions were never click-tested against the real vault** — dispatch
-   plumbing was verified end-to-end with a harmless prompt in a scratch
-   directory instead, because clicking "Start Day" during a build session would
-   have rewritten my actual daily note.
+5. **Quick actions still haven't been click-tested against the *real* vault** —
+   clicking "Start Day" during a build session would rewrite my actual daily
+   note. The whole path is verified though: end-to-end with a harmless prompt
+   through the real `claude` in a scratch directory, and the button/refusal/
+   Stop behaviour by driving the real renderer against a throwaway copy of the
+   vault with a stub binary standing in for `claude`.
 
 ## Working agreement I set for this repo
 

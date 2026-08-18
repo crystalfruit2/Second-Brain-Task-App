@@ -173,11 +173,21 @@ body {
 .col-state {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  /* The state column scrolls as a whole, so its rows must keep their natural
+     height. `auto` rows don't: inside a container with a definite height, the
+     track sizing algorithm only grows them by the free space available, so
+     once the panels are taller than the window the rows get squeezed and the
+     panels paint over each other. max-content rows never shrink. */
+  grid-auto-rows: max-content;
   align-content: start;
   align-items: start;
   gap: 12px;
 }
 .col-state > .triple { grid-column: 1 / -1; }
+/* Both top panels keep their natural height (stretching the shorter one to
+   match only moves the empty space inside it, and letting its list fill the
+   slack makes *it* define the row instead — circular). Their caps are tuned to
+   land at roughly the same height with a typical day's content. */
 .col-agent { display: flex; flex-direction: column; }
 
 .triple {
@@ -241,7 +251,7 @@ body {
    own, and the caps are viewport-relative so a taller window actually shows
    more instead of leaving the extra height empty. */
 .scroll-cap { max-height: 220px; overflow-y: auto; }
-.scroll-cap.tall { max-height: min(42vh, 420px); }
+.scroll-cap.tall { max-height: min(52vh, 470px); }
 /* Today is the list I actually read top-to-bottom, so it gets the most room. */
 #list-today { max-height: min(46vh, 460px); }
 
