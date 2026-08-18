@@ -38,14 +38,16 @@ header.drag {
   -webkit-app-region: drag;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 6px;
+  padding: 6px;
   border-bottom: 1px solid var(--border);
   user-select: none;
 }
 .no-drag { -webkit-app-region: no-drag; }
 
-.tabs { display: flex; gap: 2px; background: var(--panel); border-radius: 7px; padding: 2px; }
+/* Tightened 2026-08-18 when the ◎ Mission Control button joined the header —
+   at 340px wide the old spacing pushed – and × off the right edge. */
+.tabs { display: flex; gap: 2px; background: var(--panel); border-radius: 7px; padding: 2px; min-width: 0; }
 .tab {
   border: none;
   background: transparent;
@@ -53,28 +55,30 @@ header.drag {
   font: inherit;
   font-size: 12px;
   font-weight: 600;
-  padding: 3px 10px;
+  padding: 3px 7px;
   border-radius: 5px;
   cursor: pointer;
+  white-space: nowrap;
 }
 .tab.active { background: rgba(110,168,254,0.18); color: var(--text); }
 
-.win-btns { margin-left: auto; display: flex; gap: 2px; }
+.win-btns { margin-left: auto; display: flex; gap: 1px; flex-shrink: 0; }
 .win-btn {
   border: none;
   background: transparent;
   color: var(--muted);
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: 5px;
   cursor: pointer;
+  padding: 0;
 }
 .win-btn:hover { background: var(--panel); color: var(--text); }
 .win-btn.quit:hover { background: var(--danger); color: #fff; }
 .win-btn.active { background: rgba(110,168,254,0.18); color: var(--text); }
-.cig-btn { width: auto; padding: 0 6px; font-size: 12px; display: flex; align-items: center; gap: 3px; }
+.cig-btn { width: auto; padding: 0 4px; font-size: 11px; display: flex; align-items: center; gap: 2px; }
 
 /* ---------- shared main ---------- */
 main {

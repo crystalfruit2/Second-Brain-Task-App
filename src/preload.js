@@ -17,6 +17,26 @@ contextBridge.exposeInMainWorld('brain', {
   onActiveSessionChanged: (cb) => ipcRenderer.on('session:activeChanged', (_e, value) => cb(value)),
   sessionTaskItems: (slug) => ipcRenderer.invoke('session:taskItems', slug),
   openDashboard: () => ipcRenderer.send('window:dashboard'),
+  openMissionControl: () => ipcRenderer.send('window:missionControl'),
+
+  // ---- Mission Control: read-only vault panels ----
+  todayTasks: () => ipcRenderer.invoke('mc:todayTasks'),
+  // Same rows as listProjects(), status trimmed to one short line — the panel
+  // clamps it anyway and the registry's cells run to kilobytes of prose.
+  projectsBrief: () => ipcRenderer.invoke('mc:projects'),
+  lifeThreads: () => ipcRenderer.invoke('mc:lifeThreads'),
+  inbox: () => ipcRenderer.invoke('mc:inbox'),
+  health: () => ipcRenderer.invoke('mc:health'),
+  reviewsDue: () => ipcRenderer.invoke('mc:reviewsDue'),
+  agenda: () => ipcRenderer.invoke('mc:agenda'),
+
+  // ---- Mission Control: Rocky jobs ----
+  dispatchJob: (prompt, label) => ipcRenderer.invoke('rocky:dispatch', { prompt, label }),
+  dispatchInTerminal: (prompt) => ipcRenderer.invoke('rocky:terminal', { prompt }),
+  listJobs: () => ipcRenderer.invoke('rocky:jobs'),
+  killJob: (id) => ipcRenderer.invoke('rocky:kill', id),
+  onJobUpdate: (cb) => ipcRenderer.on('rocky:job', (_e, job) => cb(job)),
+  onJobOutput: (cb) => ipcRenderer.on('rocky:output', (_e, chunk) => cb(chunk)),
   pinClaude: () => ipcRenderer.invoke('window:pinClaude'),
   cigCount: () => ipcRenderer.invoke('health:cigCount'),
   logCig: (delta) => ipcRenderer.invoke('health:cigLog', delta),

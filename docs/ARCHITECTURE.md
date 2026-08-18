@@ -298,6 +298,17 @@ Everything the renderer can do, end to end:
 | `onSessionsUpdate(cb)` | Subscribe to the Dashboard's live 10s session poll (main process pushes, doesn't wait to be asked) |
 | `getSessionNotes(slug)` / `saveSessionNotes({slug,name,text})` | Read/write a session's notes file at `AI/session-notes/<slug>.md` |
 | `hide()` / `quit()` / `dock(edge)` | Window chrome controls |
+| `openMissionControl()` | Open (or focus) the Mission Control window |
+| `todayTasks()` | Today's `## Tasks` checkboxes, grouped by their `### ` sub-headings |
+| `lifeThreads()` | Parse `Areas/Life-Threads.md` into threads with latest movement / next pull |
+| `inbox()` | Unrouted `Inbox/*.md` captures, with `source: mobile` flagged |
+| `health()` | Last rows of `Areas/Health.md`'s trend table + whether today's note has a Health log |
+| `reviewsDue()` | Is last completed ISO week / last month missing its review file? |
+| `agenda()` | Today + next few days via the vault's `gcal.py agenda` helper |
+| `dispatchJob(prompt, label)` | Spawn `claude -p` headlessly with cwd = vault root; returns the job snapshot |
+| `dispatchInTerminal(prompt)` | Open Terminal.app in the vault running interactive `claude "<prompt>"` |
+| `listJobs()` / `killJob(id)` | Live jobs + persisted history; SIGTERM a running one |
+| `onJobUpdate(cb)` / `onJobOutput(cb)` | Push subscriptions for job state changes and streamed output chunks |
 
 The Notes widget also gained a fourth tab, **Tasks** (2026-08-10, redesigned twice same day). First cut aggregated the vault-wide `## Tasks` checkboxes like the Dashboard's Tasks/Reading columns — but that's every open task across every project, and the point of this tab was to follow through on *one* thing without getting distracted. So it's session-scoped instead: it shows the checkbox items (`- [ ]`) written inside whichever session's notes file is currently "pinned" (a small `activeSession` pointer in `window-state.json`, since it's a UI preference, not vault content — pushed live to the widget via `session:activeChanged` if it's open when the Dashboard changes it). Reuses the exact same `toggleTaskLine()` write-back the daily-note tasks use — it already took a plain `(file, line, raw)` triple, so pointing it at a session file instead of a daily note needed zero new write logic, just a new read path (`listSessionTaskItems`).
 
@@ -319,11 +330,13 @@ src/
   vault.js               all vault filesystem logic (notes, pomodoro log, tasks, projects, session notes)
   config.js               vault path resolution (env override, Mac/Windows candidates)
   sessions.js              Claude session detection (ps/lsof) + project-registry matching, no Electron dep
+  rocky.js                  Rocky job runner: claude-binary resolution, headless spawn + stream-json parsing, job history, Terminal hand-off (no Electron dep either)
   native/
     pin-window.ps1        Win32 always-on-top shim (bundled copy, see pin-window-integration.md; Windows-only)
   renderer/
     index.html / renderer.js / styles.css     the Notes/Timer/Article widget UI
     dashboard.html / dashboard.js / dashboard.css   the Tasks/Reading/Projects/Sessions dashboard UI
+    mission-control.html / mission-control.js / mission-control.css   Rocky OS — command bar, state panels, agent monitor
 docs/
   ARCHITECTURE.md          this file
   pin-window-integration.md   the pin-Claude-window feature, written up separately
@@ -475,6 +488,220 @@ day, once I ran it myself:**
    tradeoff, I haven't decided whether to de-duplicate it. Now also
    Windows-only outright (see the Mac port section above), which makes
    de-duplicating it lower priority, not higher.
+
+## Rocky OS — Mission Control (v1, 2026-08-18)
+
+### Why
+
+The Dashboard answers "what should I be doing." It doesn't answer "and now do
+it." Every time I looked at it and decided something needed doing, the next step
+was still: find a terminal, `cd` to the vault, start Claude, type the thing.
+The app knew the state and could see my running sessions, but it couldn't
+actually *dispatch* anything — it was a read-only window onto a life that gets
+lived somewhere else.
+
+Mission Control closes that loop. Same vault data, but with a command bar at the
+top that hands work to Rocky directly, and one panel that shows me everything
+that's currently running — both the headless jobs I fired from here and the
+`claude` terminals I have open elsewhere. It's the screen I want up when I sit
+down: state on the left, agents on the right, a place to type in between.
+
+This also settles the open question I'd left in this file ("should the Dashboard
+auto-show on launch instead of Notes?"). Neither: **Mission Control is the
+launch window now.** The Notes widget still gets created at startup so the tray
+toggle is instant, it just doesn't show itself anymore. Everything else about
+the widget is untouched — same tabs, same docking, same capture behavior — apart
+from tightening the header spacing, which I had to do because a sixth control
+(the ◎ Mission Control button) didn't fit at 340px wide and was pushing `–` and
+`×` off the right edge.
+
+### Windows and how you get there
+
+`src/renderer/mission-control.{html,css,js}`, opened by `createMissionWindow()`
+in `main.js`: 1280×800, resizable, normal chrome (min 900×560). Reachable from
+the tray menu, the Dock right-click menu, and a ◎ button in the Notes widget
+header — same three places the Dashboard already lived, and the old Dashboard
+still works exactly as it did.
+
+The CSS is deliberately the same palette family as `dashboard.css` (same accent,
+same muted greys, same border alpha) on a slightly darker ground, so the panels
+read as cards on a surface rather than as a second app. Dark-only, like every
+other window here — there's no light theme in this app to be consistent with.
+
+### The command bar and the job model
+
+Typing into the bar and hitting Enter spawns `claude` headlessly with
+**cwd = the vault root**. That last part is the whole point: the vault's own
+`CLAUDE.md`, skills and hooks are in play, so this dispatches to *my* Rocky with
+all of its context, not to a context-free agent that happens to be the same
+binary. The exact invocation (verified against `claude --help` before writing
+it, v2.1.234):
+
+```
+claude -p "<prompt>" --permission-mode acceptEdits \
+       --output-format stream-json --include-partial-messages --verbose
+```
+
+`⌘↵` instead of `↵` does the same thing in the other direction: it opens
+Terminal.app in the vault directory running an *interactive* `claude "<prompt>"`
+via `osascript`, for the big jobs I'd rather watch and steer than read
+afterwards.
+
+**Finding the binary** is its own small problem and `src/rocky.js` handles it
+properly, because it's the classic Electron trap: a GUI app launched from the
+Dock inherits a bare `/usr/bin:/bin` PATH, not the one from my `.zshrc`, so
+`spawn('claude')` works under `npm start` and mysteriously fails from the
+packaged `.app`. Resolution order: `ROCKY_CLAUDE_BIN` if set → every entry in
+`process.env.PATH` → the handful of real install locations
+(`~/.local/bin`, `~/.claude/local`, `/opt/homebrew/bin`, `/usr/local/bin`) →
+and only as a last resort a login shell (`$SHELL -l -c 'command -v claude'`).
+Only a *successful* resolve is cached — caching the failure would have meant
+that an app started before Claude Code was installed kept failing every
+dispatch for the rest of its life. On my machine it lands on
+`~/.local/bin/claude`. The spawned child also gets a repaired PATH so anything
+*it* shells out to isn't crippled by the same problem.
+
+A **job** is `{ id, prompt, label, cwd, mode, state, startedAt, endedAt,
+exitCode, output }` where state is `running | done | failed | killed`. Live jobs
+live in a `Map` in the main process; the moment a job finishes it's prepended
+to `userData/rocky-jobs.json` (last 50, output truncated to 4KB) and *dropped
+from the Map*, so a long session doesn't accumulate every job's 60KB tail in
+memory — `listJobs()` serves the finished ones from history. That file is also
+read defensively: anything in it that isn't a job-shaped object is filtered
+out, because a single `null` in the array used to throw out of `listJobs()` on
+every call and brick the jobs panel permanently. **Nothing about a job is ever
+written to the vault** — these are app-local operational records, not notes.
+
+**Streaming** is the reason for `--output-format stream-json`. Plain `-p` text
+output only shows up at the end, which makes a "live" monitor a lie. The
+stream-json feed is one JSON object per line, and most of it is noise (a single
+`SessionStart` hook payload can be 10KB), so `renderStreamObject()` keeps only
+four things: streamed assistant text (`content_block_delta` → `text_delta`),
+tool calls rendered as `⏺ Bash(git status)` lines, a one-line peek at each tool
+result, and errors. Chunks arrive on the child's `data` event — there is no
+polling anywhere in this path — but they do **not** each become an IPC message.
+A streamed answer arrives one token at a time, and a message (plus a DOM text
+node, plus a forced reflow from reading `scrollHeight`) per token is the
+difference between a live monitor and a hot laptop, so output is batched behind
+a 100ms flush timer and flushed immediately when the job ends. Output is capped
+at 60KB **in both processes** — the main-process tail and the renderer's `<pre>`
+each trim themselves back to 60KB once they've grown past twice that, so the
+trimming is amortised rather than a full rebuild per chunk. The line reader is
+bounded the same way: newline-free output gets force-flushed as a line at the
+cap instead of buffering a 30MB stdout dump into memory.
+
+Killing is a **process-group** operation. Jobs are spawned `detached: true`, so
+the child leads its own group and Stop sends `SIGTERM` to `-pid` — the whole
+tree, not just the `claude` process at the top of it, because the thing that
+actually outlives a naive kill is whatever the agent shelled out to. If the
+group is still alive 2s later it gets `SIGKILL`. The job stays `running` (the
+card says "stopping…") until the process *actually* exits; marking it "killed"
+the moment the signal was sent was a lie whenever the child ignored `SIGTERM`.
+`before-quit` does the same thing to every live job, `SIGTERM` then `SIGKILL`
+after a short blocking grace period, so the app can't leave orphaned `claude`
+processes — or their grandchildren — behind.
+
+The **quick actions row** (Start Day, End of Day, Process Inbox, Save Session,
+Weekly Review) is just the command bar with the prompt pre-written — each one
+dispatches the corresponding slash command through the identical path. No
+confirmation dialog: I clicked the button, that *is* the confirmation.
+
+### The state panels and where their data comes from
+
+All read-only, all loaded on window open, on window focus, and on ⟳ — never on a
+timer. Every one of them degrades to a quiet empty state instead of throwing if
+its source file is missing or has changed shape (`safely()` wraps each loader
+and logs to the console).
+
+| Panel | Source | Notes |
+|---|---|---|
+| Today | today's `Daily/YYYY-MM-DD.md` `## Tasks` | `listTodayTasks()` — today only, and it keeps the `### ` sub-headings as groups so "Bugünün işi" doesn't blur into the parked backlog. Clicking a row toggles it through the existing `toggleTaskLine()` write-back, the one place this window writes to the vault. |
+| Today → Agenda | `python3 .claude/skills/gcal/gcal.py agenda` | Calls the vault's own gcal helper rather than building a second calendar integration — that script already owns the OAuth, config and its 2h cache. No `--force`, so reopening this window doesn't hammer the network. Three distinct states, which is the point: events → the list; the helper's own `_No calendar events…_` sentinel line → "Nothing scheduled in the next few days." (connected, just an empty week); a non-zero exit or a "not connected" message → "Calendar not connected." The sentinel's text happens to contain the words "calendar not connected", so it has to be matched *first* or a genuinely empty calendar reads as a broken integration. |
+| Life Threads | `Areas/Life-Threads.md` | Parses `## <status>` sections → `### <thread>` → the `- **Why it matters/Latest movement/Next pull:**` bullets. A thread accumulates many "Latest movement" lines over time, so the last one in the file wins. Shows the active ones; the count of simmering/dormant sits in the header. |
+| Projects | `Resources/project-registry.md` | `listProjectsBrief()` — the same parse as the Dashboard's `listProjects()`, but with the status cell cut to its first line / 200 chars. The registry keeps paragraphs in that cell (DARE-MOT's alone is ~11KB) and this panel clamps to one line anyway, so the full prose was being shipped over IPC to be thrown away. The Dashboard still calls `listProjects()` and gets everything. Compact: name, 1-line status, and a `graph` badge only for rows whose graph cell is actually `✅`. |
+| Inbox | `Inbox/*.md` | Counts `.md` files (the `attachments/` folder isn't a capture), reads just the frontmatter head of each to flag `source: mobile`. Zero state is "Inbox clear." If there are phone captures, the panel grows a button that dispatches `/process-inbox`. |
+| Health | `Areas/Health.md` `## Trend log` | Last 5 rows of the table, newest first, rendered with the column emoji as the label. Header says whether today's daily note has a `### Health log` section yet. |
+| Reviews-due chip | `Resources/weekly/`, `Resources/monthly/` | Computes the ISO week of *seven days ago* (the most recent completed week) and last calendar month, and shows a chip only if the file is missing. Clicking it pre-fills the command bar with `/weekly-review` or `/monthly-review`. Right now both exist, so no chip — which is the correct answer, not a broken panel. |
+
+### Agent monitor
+
+One panel, two sources, two completely different update mechanisms:
+
+- **Rocky jobs** — push-only, event-driven, no polling at all. Each card shows
+  state, elapsed, the prompt's first line (or the quick-action label), a kill
+  button while running, and an expandable log that appends as chunks arrive and
+  keeps itself scrolled to the bottom.
+- **Terminal sessions** — the existing `sessions.js` detection, on the same 10s
+  `ps`/`lsof` poll the Dashboard already used. I refactored the poller so both
+  windows subscribe to one shared timer instead of each running their own, and
+  it stops the moment the last of those two windows closes.
+
+### Efficiency rules I kept
+
+Same rule as the Sessions panel: **zero background work while the windows are
+closed.** The session poll only runs while Mission Control or the Dashboard is
+open. The panels are pull-only. The only other timer is the 1-second elapsed
+counter on job cards, and `syncTicker()` clears it the instant the last running
+job finishes, so an idle Mission Control ticks nothing.
+
+### What the adversarial review changed (same day, v1.1)
+
+I had a reviewer agent try to break v1 before I committed it, and it did — 13
+reproducible bugs. The ones worth remembering as *rules* rather than as diffs:
+
+- **Substring heading matches are a trap.** `sectionBody()` found `## Tasks`
+  with `indexOf`, so a `### Tasks` sub-heading (or a sentence merely mentioning
+  `## Tasks`) hijacked or emptied the section. Headings are matched as whole
+  lines now — anchored regex, `\r?$` tolerated.
+- **CRLF.** Every new parser split on `'\n'` and therefore returned zero tasks
+  and zero threads for a note last saved on the Windows box. They all split on
+  `/\r?\n/` now, and `toggleTaskLine()` writes back with the line ending it
+  found instead of silently converting the file to LF.
+- **"Find the line again" must mean the *nearest* line.** The toggle's fallback
+  was `lines.indexOf(raw)`, i.e. the *first* identical line in the file — with
+  two identical tasks and a shifted note, clicking the second one ticked the
+  first. It now searches outward from the recorded index.
+- **A fat click target eats selections.** The whole task row is clickable, so
+  dragging to select a task's text ended in a vault write on mouseup. The
+  handler bails when there's a non-empty selection.
+- **Guard the dispatch, not just the prompt.** Double-clicking "Start Day"
+  launched two autonomous agents rewriting the same daily note. A quick action
+  whose prompt/label is still running is refused (visibly, on the status line),
+  and there's a hard cap of 5 concurrent jobs.
+- **`activate` with an always-alive hidden window.** The stock Electron
+  `getAllWindows().length === 0` guard can never fire here — the Notes widget is
+  always alive — so clicking the Dock icon after closing Mission Control did
+  nothing. It just calls `createMissionWindow()`, which already reuses/focuses.
+- **Layout.** At 1280×800 the Agent Monitor was taking ~40% of the width to show
+  two cards, while 30 tasks fought over a 230px scroll cap. The monitor is a
+  bounded rail (`clamp(300px, 25%, 380px)`) now, and the state side is a
+  two-column grid — Today beside Life Threads, the three compact panels
+  underneath — so Today gets both more width and a much taller cap.
+
+Plus the small hardening: `tasks:toggle` refuses any path outside the vault,
+every window denies `window.open` and `will-navigate`, and a failed toggle
+clears its own busy state.
+
+### What I deferred
+
+1. **Pin / session-notes from here.** Clicking a terminal session in the
+   Dashboard pins it as the widget's active session and opens its notes editor.
+   Mission Control's session cards are display-only — wiring the pin state and
+   the notes overlay into a third renderer meant duplicating a chunk of
+   `dashboard.js`, and the Dashboard is one click away. Left as-is on purpose.
+2. **Job → vault linkage.** A finished `/start-day` job doesn't tell the Today
+   panel to reload; I have to hit ⟳ (or refocus the window, which reloads the
+   task/inbox panels). Auto-refreshing on job completion is the obvious next
+   step.
+3. **Re-attaching to a job across an app restart.** Jobs are children of the app
+   process, so quitting kills them. History survives, the process doesn't.
+4. **Terminal hand-off is macOS-only** (`osascript` + Terminal.app). It throws a
+   clear message on other platforms rather than silently doing nothing, same
+   approach as the Windows-only pin button.
+5. **Quick actions were never click-tested against the real vault** — dispatch
+   plumbing was verified end-to-end with a harmless prompt in a scratch
+   directory instead, because clicking "Start Day" during a build session would
+   have rewritten my actual daily note.
 
 ## Working agreement I set for this repo
 

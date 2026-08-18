@@ -80,6 +80,9 @@ if (window.brain.platform !== 'win32') {
 }
 
 document.getElementById('dashboard').addEventListener('click', () => window.brain.openDashboard());
+document
+  .getElementById('mission-control')
+  .addEventListener('click', () => window.brain.openMissionControl());
 document.getElementById('hide').addEventListener('click', () => window.brain.hide());
 document.getElementById('quit').addEventListener('click', () => window.brain.quit());
 document.querySelectorAll('.dock-btn').forEach((btn) => {

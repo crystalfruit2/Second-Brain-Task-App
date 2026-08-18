@@ -4,26 +4,34 @@ const fs = require('fs');
 const { execFile } = require('child_process');
 const vault = require('./vault');
 const sessions = require('./sessions');
+const rocky = require('./rocky');
+const { VAULT_PATH } = require('./config');
 
 let notesWin = null;
 let dashboardWin = null;
+let missionWin = null;
 let tray = null;
 let isQuitting = false;
 
-// Sessions list is polled on an interval, but only while the Dashboard window
-// is open and only that one dashboardWin gets pushed updates — a hidden/closed
-// dashboard costs zero `ps`/`lsof` calls. 10s keeps it feeling live without
-// spinning up shell processes needlessly on battery.
+// Sessions list is polled on an interval, but only while a window that shows
+// sessions (Dashboard or Mission Control) is actually open — with both closed
+// this costs zero `ps`/`lsof` calls. 10s keeps it feeling live without spinning
+// up shell processes needlessly on battery.
 const SESSION_POLL_MS = 10_000;
 let sessionPollTimer = null;
 
+// Every open window that wants the live session list. Mission Control shows the
+// same data as the Dashboard's Sessions panel, so they share one poll rather
+// than each running their own ps/lsof pass.
+function sessionSubscribers() {
+  return [dashboardWin, missionWin].filter((w) => w && !w.isDestroyed());
+}
+
 async function pollSessions() {
-  if (!dashboardWin || dashboardWin.isDestroyed()) return;
+  if (!sessionSubscribers().length) return stopSessionPolling();
   try {
     const list = await sessions.listSessions();
-    if (dashboardWin && !dashboardWin.isDestroyed()) {
-      dashboardWin.webContents.send('sessions:update', list);
-    }
+    for (const w of sessionSubscribers()) w.webContents.send('sessions:update', list);
   } catch {
     /* non-fatal — next tick tries again */
   }
@@ -38,6 +46,28 @@ function startSessionPolling() {
 function stopSessionPolling() {
   clearInterval(sessionPollTimer);
   sessionPollTimer = null;
+}
+
+// Rocky job events are push-only — a spawned child process's stdout/close
+// events, never a timer. They only go to Mission Control, which is the one
+// window that renders them.
+rocky.configure({
+  historyFile: path.join(app.getPath('userData'), 'rocky-jobs.json'),
+  onEvent: (kind, payload) => {
+    if (missionWin && !missionWin.isDestroyed()) {
+      missionWin.webContents.send(kind === 'output' ? 'rocky:output' : 'rocky:job', payload);
+    }
+  },
+});
+
+// Nothing in this app is supposed to open a second window or navigate away from
+// its own local file — every renderer is a static page over IPC. Vault content
+// is rendered as text, but it *is* untrusted-ish input (a note could contain a
+// stray `<a href>` or an `http-equiv=refresh`), so both escape hatches are shut
+// on every window rather than trusted not to be found.
+function lockDownNavigation(win) {
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (e) => e.preventDefault());
 }
 
 const ICON_PATH = path.join(__dirname, '..', 'assets', 'icon.png');
@@ -155,6 +185,7 @@ function createNotesWindow() {
   notesWin.setAlwaysOnTop(true, 'screen-saver');
   notesWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
+  lockDownNavigation(notesWin);
   notesWin.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
   // Remember where the user leaves it (debounced).
@@ -211,11 +242,47 @@ function createDashboardWindow() {
       nodeIntegration: false,
     },
   });
+  lockDownNavigation(dashboardWin);
   dashboardWin.loadFile(path.join(__dirname, 'renderer', 'dashboard.html'));
   dashboardWin.webContents.once('did-finish-load', startSessionPolling);
   dashboardWin.on('closed', () => {
     dashboardWin = null;
-    stopSessionPolling();
+    if (!sessionSubscribers().length) stopSessionPolling();
+  });
+}
+
+// Mission Control — the OS screen. This is what opens on launch now; the Notes
+// widget went back to being tray/Dock-summoned, since the thing I actually want
+// in front of me when the app starts is the state of everything plus a place to
+// dispatch work, not an empty capture box.
+function createMissionWindow() {
+  if (missionWin && !missionWin.isDestroyed()) {
+    missionWin.show();
+    missionWin.focus();
+    return;
+  }
+  missionWin = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    minWidth: 900,
+    minHeight: 560,
+    icon: ICON_PATH,
+    title: 'Rocky OS — Mission Control',
+    backgroundColor: '#141417',
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  lockDownNavigation(missionWin);
+  missionWin.loadFile(path.join(__dirname, 'renderer', 'mission-control.html'));
+  missionWin.once('ready-to-show', () => missionWin.show());
+  missionWin.webContents.once('did-finish-load', startSessionPolling);
+  missionWin.on('closed', () => {
+    missionWin = null;
+    if (!sessionSubscribers().length) stopSessionPolling();
   });
 }
 
@@ -250,6 +317,7 @@ function createTray() {
   tray = new Tray(makeTrayIcon());
   tray.setToolTip('Second Brain — Notes & Timer');
   const menu = Menu.buildFromTemplate([
+    { label: 'Mission Control', click: createMissionWindow },
     { label: 'Show / hide notes', click: toggleNotesWindow },
     { label: 'Dashboard', click: createDashboardWindow },
     ...(IS_WINDOWS ? [{ label: 'Pin Claude on top', click: () => pinExternalWindow('Claude') }] : []),
@@ -283,6 +351,7 @@ function setDockMenu() {
   if (process.platform !== 'darwin') return;
   app.dock.setMenu(
     Menu.buildFromTemplate([
+      { label: 'Mission Control', click: createMissionWindow },
       { label: 'Show / hide notes', click: toggleNotesWindow },
       { label: 'Dashboard', click: createDashboardWindow },
     ])
@@ -294,7 +363,21 @@ ipcMain.handle('note:append', (_e, text) => vault.appendNote(text));
 ipcMain.handle('note:today', () => vault.readTodayNotes());
 ipcMain.handle('pomodoro:log', (_e, session) => vault.appendPomodoroSession(session));
 ipcMain.handle('tasks:list', () => vault.listTasks());
-ipcMain.handle('tasks:toggle', (_e, { file, line, raw }) => vault.toggleTaskLine(file, line, raw));
+// The renderer hands back the same `file` it was given, but this is still the
+// one IPC call that writes to an arbitrary path, so it only ever gets to write
+// inside the vault.
+function assertInVault(file) {
+  const resolved = path.resolve(String(file || ''));
+  const root = path.resolve(VAULT_PATH);
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    throw new Error('Refusing to write outside the vault.');
+  }
+  return resolved;
+}
+
+ipcMain.handle('tasks:toggle', (_e, { file, line, raw }) =>
+  vault.toggleTaskLine(assertInVault(file), line, raw)
+);
 ipcMain.handle('projects:list', () => vault.listProjects());
 ipcMain.handle('sessions:list', () => sessions.listSessions());
 ipcMain.handle('session:notesGet', (_e, slug) => vault.readSessionNotes(slug));
@@ -313,6 +396,28 @@ ipcMain.handle('article:draftClear', () => {
   return true;
 });
 
+// ---- IPC: Mission Control panels (all read-only vault views) ----
+ipcMain.handle('mc:todayTasks', () => vault.listTodayTasks());
+ipcMain.handle('mc:projects', () => vault.listProjectsBrief());
+ipcMain.handle('mc:lifeThreads', () => vault.listLifeThreads());
+ipcMain.handle('mc:inbox', () => vault.readInbox());
+ipcMain.handle('mc:health', () => vault.readHealth());
+ipcMain.handle('mc:reviewsDue', () => vault.reviewsDue());
+ipcMain.handle('mc:agenda', () => vault.readAgenda());
+
+// ---- IPC: Rocky jobs ----
+// cwd is always the vault root so the vault's CLAUDE.md, skills and hooks are
+// in play — the whole point is that this dispatches to *my* Rocky, not a
+// context-free agent.
+ipcMain.handle('rocky:dispatch', (_e, { prompt, label }) =>
+  rocky.dispatch({ prompt, label, cwd: VAULT_PATH })
+);
+ipcMain.handle('rocky:terminal', (_e, { prompt }) =>
+  rocky.openInTerminal({ prompt, cwd: VAULT_PATH })
+);
+ipcMain.handle('rocky:jobs', () => rocky.listJobs());
+ipcMain.handle('rocky:kill', (_e, id) => rocky.killJob(id));
+
 ipcMain.on('window:hide', () => {
   if (notesWin) notesWin.hide();
 });
@@ -322,16 +427,22 @@ ipcMain.on('window:quit', () => {
 });
 ipcMain.on('window:dock', (_e, edge) => dockTo(edge));
 ipcMain.on('window:dashboard', () => createDashboardWindow());
+ipcMain.on('window:missionControl', () => createMissionWindow());
 
 app.whenReady().then(() => {
   createTray();
   setDockMenu();
+  // The widget is still created up front so the tray toggle is instant, but it
+  // no longer shows itself — Mission Control is the launch screen now.
   createNotesWindow();
-  notesWin.once('ready-to-show', () => notesWin.show());
+  createMissionWindow();
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createNotesWindow();
-  });
+  // Dock click. The `getAllWindows().length === 0` guard every Electron sample
+  // uses is wrong for this app: the Notes widget is always alive (hidden), so
+  // the count is never 0 and clicking the Dock icon after closing Mission
+  // Control did nothing at all. createMissionWindow() already shows/focuses an
+  // existing window, so calling it unconditionally is the right behavior.
+  app.on('activate', () => createMissionWindow());
 });
 
 // Keep running in the tray when the window is closed — only real quit exits.
@@ -339,4 +450,8 @@ app.on('window-all-closed', () => {
   if (isQuitting) app.quit();
 });
 
-app.on('before-quit', stopSessionPolling);
+app.on('before-quit', () => {
+  stopSessionPolling();
+  // Don't leave orphaned `claude` processes behind when the app goes away.
+  rocky.killAll();
+});

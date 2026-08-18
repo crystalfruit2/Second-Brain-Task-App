@@ -1,0 +1,527 @@
+/* Rocky OS — Mission Control.
+   Same palette family as dashboard.css (this is one app, not two), just a
+   darker ground so the panels read as cards sitting on a surface rather than
+   as columns cut out of the background. Dark-only, like every other window in
+   this app — there is no light theme to stay consistent with. */
+:root {
+  --bg: #141417;
+  --surface: #1c1c20;
+  --panel: rgba(255, 255, 255, 0.05);
+  --panel-2: rgba(255, 255, 255, 0.03);
+  --text: #e9e9ec;
+  --muted: #9a9aa4;
+  --faint: #6f6f79;
+  --accent: #6ea8fe;
+  --ok: #59d499;
+  --warn: #c49a4a;
+  --danger: #e5675a;
+  --border: rgba(255, 255, 255, 0.08);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ---------- top bar ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.brand { display: flex; align-items: baseline; gap: 8px; flex-shrink: 0; }
+.brand-name { font-size: 14px; font-weight: 700; letter-spacing: 0.02em; }
+.brand-sub {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+}
+.today-line { font-size: 12px; color: var(--muted); flex: 1; min-width: 0; }
+.chips { display: flex; gap: 6px; flex-shrink: 0; }
+
+.chip {
+  border: 1px solid rgba(196, 154, 74, 0.45);
+  background: rgba(196, 154, 74, 0.12);
+  color: var(--warn);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chip:hover { background: rgba(196, 154, 74, 0.22); }
+
+#refresh {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+#refresh:hover { border-color: var(--accent); }
+
+/* ---------- command bar ---------- */
+.command {
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.command-row { display: flex; align-items: center; gap: 10px; }
+.command-caret { color: var(--accent); font-size: 13px; flex-shrink: 0; }
+.command-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 10px 13px;
+  font: inherit;
+  font-size: 13.5px;
+  outline: none;
+}
+.command-input::placeholder { color: var(--faint); }
+.command-input:focus { border-color: var(--accent); background: var(--panel); }
+.command-send {
+  background: var(--accent);
+  color: #10131a;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.command-send:active { transform: translateY(1px); }
+.command-send:disabled { opacity: 0.5; cursor: default; }
+
+.command-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding-left: 23px;
+}
+.quick { display: flex; gap: 6px; flex-wrap: wrap; }
+.quick-btn {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.quick-btn:hover { color: var(--text); border-color: var(--accent); background: var(--panel); }
+.command-status {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-left: auto;
+  text-align: right;
+  min-height: 14px;
+}
+.command-status.err { color: var(--danger); }
+
+/* ---------- grid ---------- */
+/* The state of my life is the point of this window; the agent monitor is a
+   status rail beside it. A 1.45fr/1fr split gave the monitor ~40% of a 1280px
+   window to show two or three cards in, while the day's tasks were squeezed
+   into a narrow column — so the monitor gets a bounded rail instead of a share
+   of the width, and everything else it isn't using goes to the state grid. */
+.grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(300px, 25%, 380px);
+  gap: 1px;
+  background: var(--border);
+}
+.col { min-width: 0; min-height: 0; overflow-y: auto; background: var(--bg); padding: 12px; }
+
+/* Two columns inside the state side: Today next to Life Threads (they're both
+   "what's live right now" and neither needs the full width), with the three
+   compact panels on a row underneath. Side by side means Today can be much
+   taller without pushing everything else off the bottom of the screen. */
+.col-state {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  align-content: start;
+  align-items: start;
+  gap: 12px;
+}
+.col-state > .triple { grid-column: 1 / -1; }
+.col-agent { display: flex; flex-direction: column; }
+
+.triple {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+/* ---------- panels ---------- */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.panel-fill { flex: 1; }
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.panel-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.count {
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.panel-note {
+  font-size: 11px;
+  color: var(--faint);
+  margin-left: auto;
+  text-align: right;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-body { padding: 6px 8px 10px; min-height: 0; }
+.panel-fill .panel-body { flex: 1; overflow-y: auto; }
+
+/* Capped lists rather than one endlessly long column — 30 open tasks shouldn't
+   push everything else off the bottom of the screen. Each cap scrolls on its
+   own, and the caps are viewport-relative so a taller window actually shows
+   more instead of leaving the extra height empty. */
+.scroll-cap { max-height: 220px; overflow-y: auto; }
+.scroll-cap.tall { max-height: min(42vh, 420px); }
+/* Today is the list I actually read top-to-bottom, so it gets the most room. */
+#list-today { max-height: min(46vh, 460px); }
+
+/* Make those inner scroll areas discoverable — an invisible scrollbar on a
+   capped list just reads as clipped content. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.26); background-clip: content-box; }
+
+.sub-head {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  padding: 10px 6px 5px;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+.sub-head.first { border-top: none; margin-top: 0; padding-top: 2px; }
+
+.empty { color: var(--faint); font-size: 12px; padding: 8px 6px; }
+.error { color: var(--danger); font-size: 12px; padding: 8px 6px; }
+
+/* ---------- today: tasks + agenda ---------- */
+.group-label {
+  font-size: 10px;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 8px 6px 3px;
+}
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.item:hover { background: var(--panel); }
+.item.checked .item-text { color: var(--faint); text-decoration: line-through; }
+.item-check {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--muted);
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+}
+.item.checked .item-check { background: var(--accent); border-color: var(--accent); color: #10131a; }
+.item-check.busy { opacity: 0.4; }
+.item-text { font-size: 12.5px; line-height: 1.45; word-break: break-word; min-width: 0; }
+.item-text code {
+  background: var(--panel-2);
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 11.5px;
+}
+
+.ev {
+  display: flex;
+  gap: 10px;
+  padding: 4px 6px;
+  font-size: 12.5px;
+  align-items: baseline;
+}
+.ev-time {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  flex-shrink: 0;
+  min-width: 38px;
+}
+.ev-title { word-break: break-word; min-width: 0; }
+.ev-day {
+  font-size: 10px;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 6px 6px 2px;
+}
+
+/* ---------- life threads ---------- */
+.thread { padding: 8px 6px; border-radius: 7px; }
+.thread + .thread { border-top: 1px solid var(--border); }
+.thread-name { font-size: 12.5px; font-weight: 700; margin-bottom: 4px; }
+.thread-field { display: flex; gap: 7px; font-size: 11.5px; line-height: 1.5; margin-top: 3px; }
+.thread-key {
+  color: var(--faint);
+  flex-shrink: 0;
+  width: 52px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-top: 2px;
+}
+.thread-val {
+  color: var(--muted);
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.thread.expanded .thread-val { -webkit-line-clamp: unset; overflow: visible; }
+.thread-val.next { color: var(--text); }
+
+/* ---------- projects / inbox / health ---------- */
+.proj { padding: 6px; border-radius: 6px; cursor: default; }
+.proj + .proj { border-top: 1px solid var(--border); }
+.proj-name { font-size: 12px; font-weight: 700; display: flex; gap: 6px; align-items: baseline; }
+.proj-graph {
+  font-size: 9px;
+  color: var(--ok);
+  border: 1px solid rgba(89, 212, 153, 0.4);
+  border-radius: 4px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.proj-status {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inbox-item { padding: 6px; border-radius: 6px; font-size: 12px; }
+.inbox-item + .inbox-item { border-top: 1px solid var(--border); }
+.inbox-name { word-break: break-word; line-height: 1.4; }
+.inbox-src {
+  font-size: 9.5px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 2px;
+}
+
+.health-row {
+  display: flex;
+  gap: 8px;
+  padding: 5px 6px;
+  font-size: 11.5px;
+  align-items: baseline;
+}
+.health-row + .health-row { border-top: 1px solid var(--border); }
+.health-date { color: var(--faint); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.health-vals { color: var(--muted); min-width: 0; word-break: break-word; line-height: 1.4; }
+
+/* ---------- agent monitor ---------- */
+.job {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.job.running { border-color: rgba(110, 168, 254, 0.4); }
+.job-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.job-head:hover { background: var(--panel); }
+.job-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--faint);
+}
+.job.running .job-dot { background: var(--accent); box-shadow: 0 0 6px rgba(110, 168, 254, 0.7); }
+.job.done .job-dot { background: var(--ok); }
+.job.failed .job-dot { background: var(--danger); }
+.job-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.job-meta {
+  font-size: 10.5px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.job-kill {
+  border: 1px solid rgba(229, 103, 90, 0.4);
+  background: transparent;
+  color: var(--danger);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  border-radius: 5px;
+  padding: 2px 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.job-kill:hover { background: rgba(229, 103, 90, 0.14); }
+.job-caret { color: var(--faint); font-size: 10px; flex-shrink: 0; width: 10px; }
+
+.job-log {
+  display: none;
+  margin: 0;
+  padding: 9px 11px;
+  border-top: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.28);
+  color: #cfcfd6;
+  font: 11px/1.6 ui-monospace, "SF Mono", Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.job.open .job-log { display: block; }
+.job-log:empty::before { content: "waiting for output…"; color: var(--faint); }
+
+.sess { padding: 7px 8px; border-radius: 7px; }
+.sess + .sess { border-top: 1px solid var(--border); }
+.sess-head { display: flex; align-items: center; gap: 7px; }
+.sess-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex-shrink: 0;
+  box-shadow: 0 0 6px rgba(89, 212, 153, 0.55);
+}
+.sess-name { font-size: 12.5px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sess-notes {
+  font-size: 9.5px;
+  color: var(--accent);
+  border: 1px solid rgba(110, 168, 254, 0.35);
+  border-radius: 4px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.sess-meta { font-size: 10.5px; color: var(--faint); margin: 3px 0 0 14px; font-variant-numeric: tabular-nums; }
+.sess-path { font-size: 10px; color: var(--faint); opacity: 0.8; margin-left: 14px; word-break: break-all; }
+
+/* ---------- narrow ---------- */
+@media (max-width: 1180px) {
+  .triple { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  /* Below this the two state columns are narrower than the text in them. */
+  .col-state { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 1040px) {
+  /* Below two columns the whole board becomes one scrolling stack. Not a grid
+     with two auto rows — that let the state column overflow its row and get
+     painted over by the agent column's own background. */
+  .grid { display: block; overflow-y: auto; background: var(--bg); }
+  .col { overflow-y: visible; }
+  .col-agent { border-top: 1px solid var(--border); }
+  .panel-fill { flex: none; }
+  .panel-fill .panel-body { overflow-y: visible; }
+  .topbar { flex-wrap: wrap; }
+  .brand { flex: 1; } /* keeps chips + Refresh pinned right once the date wraps */
+  .today-line { order: 3; flex-basis: 100%; flex-grow: 0; }
+}
+@media (max-width: 760px) {
+  .triple { grid-template-columns: minmax(0, 1fr); }
+}

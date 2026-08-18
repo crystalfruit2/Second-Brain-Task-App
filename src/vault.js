@@ -2,6 +2,7 @@
 // the renderer only talks to these via IPC (see main.js + preload.js).
 const fs = require('fs');
 const path = require('path');
+const { execFile } = require('child_process');
 const { VAULT_PATH } = require('./config');
 
 function pad(n) {
@@ -232,12 +233,23 @@ function logCigarette(delta = 1, date = new Date()) {
 
 const TASKS_HEADING = '## Tasks';
 
+function escapeRe(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Body of a `## heading` section: from just after the heading line up to
 // (not including) the next `## ` heading, or end of file.
+//
+// The heading is matched as a *whole line*, not as a substring: a `### Tasks`
+// sub-heading or a sentence that merely mentions `## Tasks` earlier in the note
+// used to win the `indexOf` race and either hijack or empty the section. The
+// trailing `\r?` keeps CRLF notes (edited on the Windows box) working.
 function sectionBody(content, heading) {
-  const idx = content.indexOf(heading);
-  if (idx === -1) return null;
-  const start = content.indexOf('\n', idx) + 1;
+  const m = new RegExp(`^${escapeRe(heading)}[ \\t]*\\r?$`, 'm').exec(content);
+  if (!m) return null;
+  const nl = content.indexOf('\n', m.index);
+  if (nl === -1) return { start: content.length, body: '' }; // heading is the last line
+  const start = nl + 1;
   const rest = content.slice(start);
   const nextHeading = rest.search(/\n## /);
   const bodyEnd = nextHeading === -1 ? rest.length : nextHeading + 1;
@@ -245,10 +257,10 @@ function sectionBody(content, heading) {
 }
 
 function parseCheckboxLines(body) {
-  const lines = body.split('\n');
+  const lines = body.split(/\r?\n/);
   const items = [];
   lines.forEach((line, i) => {
-    const m = line.match(/^- \[([ xX])\]\s+(.*)$/);
+    const m = line.match(/^- \[([ xX])\]\s+(.*?)\s*$/);
     if (m) items.push({ lineIndex: i, checked: m[1].toLowerCase() === 'x', raw: line, text: m[2] });
   });
   return items;
@@ -297,22 +309,41 @@ function listTasks(daysBack = 7) {
   return out;
 }
 
+// Index of the line equal to `raw` that sits *closest* to `hint`, searching
+// outward in both directions. Two identical task lines in one note are normal
+// ("- [ ] mail Farzad" twice in a week); if the file shifted under us, the one
+// I clicked is the one near where it was, not the first one in the file.
+function nearestMatchingLine(lines, raw, hint) {
+  const from = Number.isInteger(hint) ? hint : 0;
+  const span = Math.max(from, lines.length - from) + 1;
+  for (let d = 0; d <= span; d++) {
+    const back = from - d;
+    if (back >= 0 && lines[back] === raw) return back;
+    const fwd = from + d;
+    if (d && fwd < lines.length && lines[fwd] === raw) return fwd;
+  }
+  return -1;
+}
+
 // Flip `- [ ]` <-> `- [x]` on one line of one file. `line`/`raw` come from
 // listTasks() and are used to re-locate the exact line even if earlier lines
-// in the file shifted; falls back to an exact-text search if the file changed.
+// in the file shifted; falls back to the nearest identical line if the file
+// changed. Line endings are preserved as found, so toggling a CRLF note
+// doesn't silently rewrite the whole file to LF.
 function toggleTaskLine(file, line, raw) {
   const content = fs.readFileSync(file, 'utf8');
-  const lines = content.split('\n');
+  const eol = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content.split(/\r?\n/);
   let at = line;
   if (lines[at] !== raw) {
-    at = lines.indexOf(raw);
+    at = nearestMatchingLine(lines, raw, line);
     if (at === -1) throw new Error('That task line no longer matches the note — it may have changed.');
   }
   const toggled = /^- \[ \]/.test(raw)
     ? raw.replace('- [ ]', '- [x]')
     : raw.replace(/^- \[[xX]\]/, '- [ ]');
   lines[at] = toggled;
-  fs.writeFileSync(file, lines.join('\n'), 'utf8');
+  fs.writeFileSync(file, lines.join(eol), 'utf8');
   return { file, line: at, raw: toggled, checked: /^- \[[xX]\]/.test(toggled) };
 }
 
@@ -354,6 +385,26 @@ function listProjects() {
     });
   }
   return rows;
+}
+
+// Same rows, but with the status cell cut down to one short line. The registry
+// keeps whole paragraphs in that cell (DARE-MOT's alone is ~11KB), and Mission
+// Control's Projects panel clamps to a single line anyway — so shipping the
+// full prose across IPC was paying for text nobody can see. The Dashboard still
+// calls listProjects() and gets everything, unchanged.
+const PROJECT_STATUS_CHARS = 200;
+
+function listProjectsBrief() {
+  return listProjects().map((p) => {
+    const oneLine = String(p.status || '').split(/<br\s*\/?>|\r?\n/)[0].trim();
+    return {
+      ...p,
+      status:
+        oneLine.length > PROJECT_STATUS_CHARS
+          ? oneLine.slice(0, PROJECT_STATUS_CHARS - 1).trimEnd() + '…'
+          : oneLine,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -508,15 +559,288 @@ function saveSessionNotes(slug, name, text) {
   return { file };
 }
 
+// ---------------------------------------------------------------------------
+// Mission Control panels. Everything below is READ-ONLY on the vault (the one
+// exception being the task toggle, which reuses toggleTaskLine above) and every
+// function returns a quiet empty shape rather than throwing when the file it
+// wants is missing or shaped differently than expected — a panel that can't
+// parse its source should go blank, not take the window down with it.
+// ---------------------------------------------------------------------------
+
+// Today's `## Tasks` only, grouped by whatever `### ` sub-headings the day uses
+// (my daily notes bucket tasks under things like "Bugünün işi" / "Devam eden").
+// Line indices are absolute in the file, so these items feed toggleTaskLine()
+// unchanged.
+function listTodayTasks(date = new Date()) {
+  const file = dailyNotePath(date);
+  if (!fs.existsSync(file)) return [];
+  let content;
+  try {
+    content = fs.readFileSync(file, 'utf8');
+  } catch {
+    return [];
+  }
+  const sec = sectionBody(content, TASKS_HEADING);
+  if (!sec) return [];
+
+  const lineOffset = content.slice(0, sec.start).split('\n').length - 1;
+  const lines = sec.body.split(/\r?\n/);
+  const out = [];
+  let group = '';
+  lines.forEach((line, i) => {
+    const heading = line.match(/^#{3,}\s+(.*?)\s*$/);
+    if (heading) {
+      group = heading[1].trim();
+      return;
+    }
+    const m = line.match(/^- \[([ xX])\]\s+(.*?)\s*$/);
+    if (!m) return;
+    out.push({
+      file,
+      date: todayStamp(date),
+      line: lineOffset + i,
+      raw: line,
+      text: m[2],
+      checked: m[1].toLowerCase() === 'x',
+      group,
+    });
+  });
+  return out;
+}
+
+// Areas/Life-Threads.md: `## <status> threads` sections, one `### ` per thread,
+// then `- **Why it matters:** / **Latest movement:** / **Next pull:**` bullets.
+// "Latest movement" is appended to over time (a thread can carry a dozen of
+// them), so the last one in the file is the current one.
+const THREAD_FIELDS = {
+  'why it matters': 'why',
+  'latest movement': 'latest',
+  'next pull': 'next',
+};
+
+function cleanFieldValue(s) {
+  return String(s || '')
+    .trim()
+    .replace(/^_+|_+$/g, '') // movements are wrapped in italics
+    .trim();
+}
+
+function listLifeThreads() {
+  const file = path.join(VAULT_PATH, 'Areas', 'Life-Threads.md');
+  if (!fs.existsSync(file)) return [];
+  let content;
+  try {
+    content = fs.readFileSync(file, 'utf8');
+  } catch {
+    return [];
+  }
+
+  const threads = [];
+  let section = '';
+  let current = null;
+  for (const line of content.split(/\r?\n/)) {
+    const h2 = line.match(/^##\s+(.*?)\s*$/);
+    if (h2) {
+      // "🔥 Active threads" -> "Active threads"
+      section = h2[1].replace(/[^\p{L}\p{N}\s'-]/gu, '').trim();
+      current = null;
+      continue;
+    }
+    const h3 = line.match(/^###\s+(.*?)\s*$/);
+    if (h3) {
+      current = { name: h3[1].trim(), section, why: '', latest: '', next: '' };
+      threads.push(current);
+      continue;
+    }
+    if (!current) continue;
+    const field = line.match(/^-\s+\*\*([^:*]+):\*\*\s*(.*?)\s*$/);
+    if (!field) continue;
+    const key = THREAD_FIELDS[field[1].trim().toLowerCase()];
+    if (key) current[key] = cleanFieldValue(field[2]);
+  }
+  return threads;
+}
+
+// Unrouted Inbox captures. Counts `.md` files only (the `attachments/` folder
+// isn't a capture), and flags the ones the phone app dropped in
+// (`source: mobile` frontmatter) since those are what /process-inbox exists for.
+function readInbox() {
+  const dir = path.join(VAULT_PATH, 'Inbox');
+  if (!fs.existsSync(dir)) return { total: 0, mobile: 0, items: [] };
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return { total: 0, mobile: 0, items: [] };
+  }
+
+  const items = [];
+  for (const name of names) {
+    if (!name.endsWith('.md') || name.startsWith('.')) continue;
+    const file = path.join(dir, name);
+    let stat;
+    try {
+      stat = fs.statSync(file);
+    } catch {
+      continue;
+    }
+    if (!stat.isFile()) continue;
+
+    let source = '';
+    try {
+      // Only the frontmatter block matters here — don't read a whole capture in
+      // just to learn where it came from.
+      const head = fs.readFileSync(file, 'utf8').slice(0, 1200);
+      const fm = head.match(/^---\n([\s\S]*?)\n---/);
+      if (fm) {
+        const m = fm[1].match(/^source:\s*(.+)$/m);
+        if (m) source = m[1].trim().replace(/^["']|["']$/g, '');
+      }
+    } catch {
+      /* unreadable capture still counts as an item */
+    }
+    items.push({ file, name: name.replace(/\.md$/, ''), source, mtime: stat.mtimeMs });
+  }
+  items.sort((a, b) => b.mtime - a.mtime);
+  return { total: items.length, mobile: items.filter((i) => i.source === 'mobile').length, items };
+}
+
+// Areas/Health.md's `## Trend log` markdown table, newest row first, plus
+// whether today's daily note has a `### Health log — DATE` section yet (the one
+// the widget's 🚬 counter writes into).
+function readHealth(limit = 5, date = new Date()) {
+  const empty = { rows: [], columns: [], loggedToday: false };
+  const file = path.join(VAULT_PATH, 'Areas', 'Health.md');
+  if (!fs.existsSync(file)) return empty;
+  let content;
+  try {
+    content = fs.readFileSync(file, 'utf8');
+  } catch {
+    return empty;
+  }
+
+  const sec = sectionBody(content, '## Trend log');
+  if (!sec) return { ...empty, loggedToday: healthLoggedToday(date) };
+
+  let columns = [];
+  const rows = [];
+  for (const line of sec.body.split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('|')) continue;
+    if (/^\|[\s:|-]+\|$/.test(t)) continue; // separator row
+    const cells = splitRow(t);
+    if (!columns.length) {
+      columns = cells;
+      continue;
+    }
+    rows.push({ date: cells[0] || '', cells });
+  }
+  // Table is written oldest-first; the panel wants the recent end.
+  rows.reverse();
+  return { rows: rows.slice(0, limit), columns, loggedToday: healthLoggedToday(date) };
+}
+
+function healthLoggedToday(date = new Date()) {
+  const file = dailyNotePath(date);
+  if (!fs.existsSync(file)) return false;
+  try {
+    return fs.readFileSync(file, 'utf8').includes(healthLogHeading(date));
+  } catch {
+    return false;
+  }
+}
+
+// ISO-8601 week number + the year that week belongs to (which is not always the
+// calendar year — Dec 29 2025 is in 2026-W01).
+function isoWeek(d) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  // Thursday of this week decides which year+week the whole week belongs to.
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+  const year = t.getUTCFullYear();
+  const jan1 = new Date(Date.UTC(year, 0, 1));
+  const week = Math.ceil(((t - jan1) / 86_400_000 + 1) / 7);
+  return { year, week };
+}
+
+// "Reviews are Claude's job to remember, not Alp's" — so the window checks
+// instead of me. The most recent *completed* ISO week is simply the one seven
+// days ago, whatever day of the week it is today.
+function reviewsDue(date = new Date()) {
+  const lastWeekDay = new Date(date);
+  lastWeekDay.setDate(lastWeekDay.getDate() - 7);
+  const { year, week } = isoWeek(lastWeekDay);
+  const weeklyId = `${year}-W${pad(week)}`;
+  const weeklyFile = path.join(VAULT_PATH, 'Resources', 'weekly', `${weeklyId}.md`);
+
+  const lastMonth = new Date(date.getFullYear(), date.getMonth() - 1, 1);
+  const monthlyId = `${lastMonth.getFullYear()}-${pad(lastMonth.getMonth() + 1)}`;
+  const monthlyFile = path.join(VAULT_PATH, 'Resources', 'monthly', `${monthlyId}.md`);
+
+  return {
+    weekly: { id: weeklyId, due: !fs.existsSync(weeklyFile) },
+    monthly: { id: monthlyId, due: !fs.existsSync(monthlyFile) },
+  };
+}
+
+// Today + the next few days from Google Calendar, via the vault's own gcal
+// helper (`.claude/skills/gcal/gcal.py agenda`) rather than a second
+// integration — that script already owns the OAuth, the cache and the config.
+// Without --force it reads its own 2h cache, so opening this window repeatedly
+// doesn't hammer the network. Never rejects: a missing/unconfigured calendar
+// comes back as `{ connected: false }` and the panel shows a quiet line.
+function readAgenda() {
+  const script = path.join(VAULT_PATH, '.claude', 'skills', 'gcal', 'gcal.py');
+  if (!fs.existsSync(script)) return Promise.resolve({ connected: false, days: [] });
+
+  return new Promise((resolve) => {
+    execFile(
+      'python3',
+      [script, 'agenda'],
+      { cwd: VAULT_PATH, timeout: 20_000, maxBuffer: 1 << 20 },
+      (err, stdout) => {
+        if (err) return resolve({ connected: false, days: [] });
+        const text = String(stdout || '').trim();
+        // gcal.py prints `_No calendar events (or calendar not connected yet)._`
+        // for a connected calendar with nothing on it — a sentence that also
+        // contains the words "calendar not connected". Match the sentinel as a
+        // whole line first, or an empty-but-working calendar reads as a broken
+        // integration and the "Nothing scheduled" state can never be reached.
+        if (!text || /^_No calendar events/m.test(text)) {
+          return resolve({ connected: true, days: [] });
+        }
+        if (/not connected/i.test(text)) return resolve({ connected: false, days: [] });
+        const days = [];
+        for (const line of text.split(/\r?\n/)) {
+          const h = line.match(/^###\s+(.*)$/);
+          if (h) {
+            days.push({ label: h[1].trim(), events: [] });
+            continue;
+          }
+          const e = line.match(/^-\s+(?:(\d{1,2}:\d{2})\s+)?\*\*(.*?)\*\*\s*$/);
+          if (e && days.length) days[days.length - 1].events.push({ time: e[1] || '', title: e[2] });
+        }
+        resolve({ connected: true, days: days.filter((d) => d.events.length) });
+      }
+    );
+  });
+}
+
 module.exports = {
   appendNote,
   readTodayNotes,
+  listTodayTasks,
+  listLifeThreads,
+  readInbox,
+  readHealth,
+  reviewsDue,
+  readAgenda,
   appendPomodoroSession,
   dailyNotePath,
   todayStamp,
   listTasks,
   toggleTaskLine,
   listProjects,
+  listProjectsBrief,
   getCigCount,
   logCigarette,
   saveArticleNote,
