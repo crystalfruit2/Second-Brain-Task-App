@@ -11,9 +11,7 @@
   "license": "MIT",
   "devDependencies": {
     "electron": "^33.2.0",
-    "electron-builder": "^25.1.8",
-    "marked": "^15.0.12",
-    "dompurify": "^3.4.14"
+    "electron-builder": "^25.1.8"
   },
   "dependencies": {
     "gray-matter": "^4.0.3"
@@ -24,18 +22,11 @@
     "directories": {
       "output": "dist"
     },
-    "files": [
-      "src/**/*",
-      "assets/**/*",
-      "package.json"
-    ],
+    "files": ["src/**/*", "assets/**/*", "package.json"],
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "assets/icon-mac.png",
-      "target": [
-        "dir",
-        "zip"
-      ],
+      "target": ["dir", "zip"],
       "identity": null
     }
   }

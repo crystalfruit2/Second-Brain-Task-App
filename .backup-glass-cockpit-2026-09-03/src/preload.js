@@ -37,25 +37,6 @@ contextBridge.exposeInMainWorld('brain', {
   killJob: (id) => ipcRenderer.invoke('rocky:kill', id),
   onJobUpdate: (cb) => ipcRenderer.on('rocky:job', (_e, job) => cb(job)),
   onJobOutput: (cb) => ipcRenderer.on('rocky:output', (_e, chunk) => cb(chunk)),
-
-  // ---- Mission Control: Reading Room ----
-  // sessions
-  readerSessions: () => ipcRenderer.invoke('reader:sessions'),
-  // -> [{ pid, sessionId, name, cwd, project, status: 'busy'|'idle'|'unknown', title }]
-  readerOpen: (pid) => ipcRenderer.invoke('reader:open', pid),
-  // -> { ok, pid, sessionId, title, status, turns: [Turn] } (opening another pid closes the previous reader)
-  readerClose: () => ipcRenderer.invoke('reader:close'),
-  onReaderTurns: (cb) => ipcRenderer.on('reader:turns', (_e, payload) => cb(payload)),
-  // { pid, sessionId, turns } — appended OR re-sent turns; upsert by uuid
-  onReaderStatus: (cb) => ipcRenderer.on('reader:status', (_e, payload) => cb(payload)),
-  // { pid, sessionId, status, title, swapped? } — swapped = /clear happened
-  // side thread
-  askRocky: (payload) => ipcRenderer.invoke('reader:ask', payload),
-  // { pid, threadId?, selection, turnUuid, question, fullContext? } -> { ok, threadId, jobId, mode, error? }
-  // streaming arrives on onJobOutput / onJobUpdate for that jobId
-  threadNote: (payload) => ipcRenderer.invoke('reader:note', payload), // { pid, threadId } -> { ok, file }
-  threadSave: (payload) => ipcRenderer.invoke('reader:saveTopic', payload), // { pid, threadId, topicFile } -> { ok, file }
-  listTopics: () => ipcRenderer.invoke('reader:topics'), // -> [{ file, title }] newest first
   pinClaude: () => ipcRenderer.invoke('window:pinClaude'),
   cigCount: () => ipcRenderer.invoke('health:cigCount'),
   logCig: (delta) => ipcRenderer.invoke('health:cigLog', delta),

@@ -2,112 +2,186 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self';" />
     <link rel="stylesheet" href="mission-control.css" />
     <title>Rocky OS — Mission Control</title>
   </head>
   <body>
-    <header class="topbar">
+    <!--
+    THESIS: Rocky OS as a first-party Apple app. The day runs in the grammar of
+    Reminders, Fitness and iMessage in dark mode; it refuses the text-dense
+    terminal-dashboard default and the cockpit costume alike.
+    OWN-WORLD: True black ground; elevated #1C1C1E cards with hairline
+    separators; SF Pro via the system stack; one brand tint — lantern orange
+    from Rocky's own icon — commands the next action and the armed send; green
+    runs, blue informs, yellow cautions, red destroys; circular Reminders
+    checks; pill chips; an iMessage composer with a filled ↑ send.
+    STORY: One glance answers: what do I do now (orange), is Rocky working
+    (green), how is my life (tiles). Tap drills like an iOS list; you write to
+    Rocky the way you message a person.
+    FIRST VIEWPORT: title bar with status pills and clock over black; Today
+    card left with circle checks; Now card center, orange next-action label
+    over a large task line, stat tiles at its foot; Activity card right;
+    composer bottom with quick-action pills.
+    FORM: brief-pinned (Apple iOS, premium) — no roll; code-led.
+    FINISH: unreviewed and undocumented is unfinished; this build ends with the
+    finish review, the verdict, DESIGN.md, and every shipping raster carrying
+    its provenance.
+    -->
+
+    <!-- ============ NAVIGATION BAR ============ -->
+    <header class="fma">
       <div class="brand">
-        <span class="brand-name">Rocky OS</span>
-        <span class="brand-sub">Mission Control</span>
+        <span class="brand-name">Mission Control</span>
       </div>
-      <div class="today-line" id="today-line"></div>
-      <div class="chips" id="chips"></div>
-      <button id="refresh" title="Reload every panel">⟳ Refresh</button>
+      <div class="fma-cell" id="fma-rocky" title="Rocky job runner">
+        <span class="fma-label">Rocky</span>
+        <span class="fma-value mode-stby" id="fma-rocky-value">Idle</span>
+      </div>
+      <div class="fma-cell" title="Open tasks in today's note">
+        <span class="fma-label">Today</span>
+        <span class="fma-value" id="fma-day-value">—</span>
+      </div>
+      <button class="fma-cell" id="fma-term-cell" title="Live Claude terminals — open the Reading Room">
+        <span class="fma-label">Terminals</span>
+        <span class="fma-value" id="fma-term-value">—</span>
+      </button>
+      <div class="annunciators" id="annunciators"></div>
+      <div class="fma-clock">
+        <span id="fma-date"></span>
+        <span class="fma-time" id="fma-time"></span>
+      </div>
+      <button id="refresh" class="bezel-btn" title="Reload every panel"></button>
     </header>
 
-    <!-- ============ COMMAND BAR ============ -->
-    <section class="command">
-      <div class="command-row">
-        <span class="command-caret">▸</span>
-        <input
-          id="cmd"
-          class="command-input"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="Tell Rocky what to do…  ↵ dispatch here  ·  ⌘↵ open in Terminal"
-          autofocus
-        />
-        <button id="cmd-send" class="command-send">Dispatch</button>
-      </div>
-      <div class="command-foot">
-        <div class="quick" id="quick"></div>
-        <span class="command-status" id="cmd-status"></span>
-      </div>
-    </section>
-
-    <main class="grid">
-      <!-- ============ STATE COLUMN ============ -->
-      <div class="col col-state">
-        <section class="panel" id="panel-today">
-          <div class="panel-head">
-            <span class="panel-title">Today</span>
-            <span class="count" id="count-today">—</span>
-            <span class="panel-note" id="today-note"></span>
-          </div>
-          <div class="panel-body">
-            <div class="scroll-cap" id="list-today"></div>
-            <div class="sub-head">Agenda</div>
-            <div id="list-agenda"></div>
-          </div>
-        </section>
-
-        <section class="panel" id="panel-threads">
-          <div class="panel-head">
-            <span class="panel-title">Life Threads</span>
-            <span class="count" id="count-threads">—</span>
-            <span class="panel-note" id="threads-note"></span>
-          </div>
-          <div class="panel-body">
-            <div class="scroll-cap tall" id="list-threads"></div>
-          </div>
-        </section>
-
-        <div class="triple">
-          <section class="panel">
-            <div class="panel-head">
-              <span class="panel-title">Projects</span>
-              <span class="count" id="count-projects">—</span>
-            </div>
-            <div class="panel-body"><div class="scroll-cap" id="list-projects"></div></div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-head">
-              <span class="panel-title">Inbox</span>
-              <span class="count" id="count-inbox">—</span>
-            </div>
-            <div class="panel-body"><div class="scroll-cap" id="list-inbox"></div></div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-head">
-              <span class="panel-title">Health</span>
-              <span class="panel-note" id="health-note"></span>
-            </div>
-            <div class="panel-body"><div class="scroll-cap" id="list-health"></div></div>
-          </section>
+    <!-- ============ BOARD ============ -->
+    <main class="board">
+      <!-- Today card -->
+      <aside class="tape tape-day">
+        <button class="tape-head" id="tasks-head" title="Open the full task list">
+          <span class="tape-title">Today</span>
+          <span class="tape-note" id="tasks-note"></span>
+        </button>
+        <div class="tape-scroll">
+          <div id="tape-tasks"></div>
+          <div class="tape-sub">Schedule</div>
+          <div id="tape-agenda"></div>
         </div>
-      </div>
+      </aside>
 
-      <!-- ============ AGENT MONITOR ============ -->
-      <div class="col col-agent">
-        <section class="panel panel-fill">
-          <div class="panel-head">
-            <span class="panel-title">Agent Monitor</span>
-            <span class="count" id="count-agents">—</span>
+      <!-- CENTER DISPLAY (page-swapped in place; the board never reflows) -->
+      <section class="display">
+        <div class="display-head">
+          <span class="display-title" id="display-title">Now</span>
+          <span class="display-note" id="display-note" hidden><span class="rr-dot" id="rr-dot"></span><span id="rr-note-text"></span></span>
+          <button class="bezel-btn display-back" id="display-back" title="Back to Now" hidden></button>
+        </div>
+        <!-- Reading Room: session switcher (read mode only) -->
+        <div class="reader-bar" id="reader-bar" hidden>
+          <div class="segmented" id="rr-switch"></div>
+        </div>
+        <div class="display-body" id="display-body"></div>
+        <button class="rr-latest" id="rr-latest" hidden>Latest</button>
+        <!-- stat tiles: fixed row, never moves -->
+        <div class="instruments">
+          <button class="instr" id="instr-threads">
+            <span class="instr-value" id="instr-threads-value">—</span>
+            <span class="instr-label">Threads</span>
+            <span class="instr-note" id="instr-threads-note"></span>
+          </button>
+          <button class="instr" id="instr-projects">
+            <span class="instr-value" id="instr-projects-value">—</span>
+            <span class="instr-label">Projects</span>
+            <span class="instr-note" id="instr-projects-note"></span>
+          </button>
+          <button class="instr" id="instr-inbox">
+            <span class="instr-value" id="instr-inbox-value">—</span>
+            <span class="instr-label">Inbox</span>
+            <span class="instr-note" id="instr-inbox-note"></span>
+          </button>
+          <button class="instr" id="instr-health">
+            <span class="instr-spark" id="instr-health-spark"></span>
+            <span class="instr-label">Health</span>
+            <span class="instr-note" id="instr-health-note"></span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Activity card -->
+      <aside class="tape tape-sys">
+        <div class="tape-head static">
+          <span class="tape-title">Activity</span>
+          <span class="tape-note" id="sys-note"></span>
+        </div>
+        <div class="tape-scroll">
+          <div class="tape-sub first">Rocky jobs</div>
+          <div id="rail-jobs"></div>
+          <div class="tape-sub">Terminals</div>
+          <div id="rail-sessions"></div>
+        </div>
+      </aside>
+
+      <!-- Inspector — the side thread, shown in place of Activity in read mode.
+           Its own container: the 10s sessions poll never touches it. -->
+      <aside class="tape tape-inspector" id="inspector">
+        <div class="tape-head static">
+          <span class="tape-title">Side thread</span>
+          <button class="ghost-btn" id="insp-new" title="Start a fresh side thread">New thread</button>
+        </div>
+        <div class="tape-scroll insp-scroll" id="insp-scroll">
+          <div id="insp-quote"></div>
+          <div id="insp-thread"></div>
+        </div>
+        <div class="insp-foot">
+          <div class="insp-pills" id="insp-pills">
+            <button class="modekey insp-pill" id="insp-note" disabled>Terminale not bırak</button>
+            <button class="modekey insp-pill" id="insp-save" disabled>Topics'e kaydet</button>
           </div>
-          <div class="panel-body monitor">
-            <div class="sub-head first">Rocky jobs</div>
-            <div id="list-jobs"></div>
-            <div class="sub-head">Terminal sessions</div>
-            <div id="list-sessions"></div>
+          <div class="insp-picker" id="insp-picker" hidden></div>
+          <div class="insp-mode">
+            <button class="modekey insp-ctx" id="insp-ctx" role="switch" aria-checked="false"><span class="key-light"></span>Tüm bağlamla</button>
+            <span class="insp-hint" id="insp-hint" hidden>~$0.50 · ~12 s ilk sefer</span>
           </div>
-        </section>
-      </div>
+          <div class="insp-row">
+            <textarea id="insp-input" class="insp-input" rows="1" placeholder="Bunu anlamadım…" spellcheck="false"></textarea>
+            <button id="insp-send" class="insp-send" aria-label="Sor" title="Sor">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 12V2"/><path d="M2.8 6.2 7 2l4.2 4.2"/></svg>
+            </button>
+          </div>
+        </div>
+      </aside>
     </main>
 
+    <!-- Reading Room: floating "Sor" pill over a fresh selection -->
+    <button class="rr-ask" id="rr-ask" hidden>
+      <span>Sor</span>
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8 8 2"/><path d="M3.5 2H8v4.5"/></svg>
+    </button>
+
+    <!-- ============ COMPOSER ============ -->
+    <footer class="cdu">
+      <div class="cdu-row">
+        <input
+          id="cmd"
+          class="cdu-input"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="Message Rocky — ↵ dispatches · ⌘↵ opens Terminal"
+          autofocus
+        />
+        <button id="cmd-send" class="cdu-send" aria-label="Dispatch to Rocky" title="Dispatch to Rocky">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 12V2"/><path d="M2.8 6.2 7 2l4.2 4.2"/></svg>
+        </button>
+      </div>
+      <div class="cdu-foot">
+        <div class="modekeys" id="quick"></div>
+        <span class="cdu-status" id="cmd-status"></span>
+      </div>
+    </footer>
+
+    <script src="vendor/marked.min.js"></script>
+    <script src="vendor/purify.min.js"></script>
+    <script src="md.js"></script>
     <script src="mission-control.js"></script>
   </body>
 </html>

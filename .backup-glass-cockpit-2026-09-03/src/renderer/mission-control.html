@@ -1,0 +1,139 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self';" />
+    <link rel="stylesheet" href="mission-control.css" />
+    <title>Rocky OS — Mission Control</title>
+  </head>
+  <body>
+    <!--
+    THESIS: A day flown like a flight. Mission Control is a primary flight display
+    for a life; it refuses the text-column dashboard. Nothing nominal speaks; the
+    next action is always the magenta target.
+    OWN-WORLD: Black glass. B612 / B612 Mono. PFD color law — white current, green
+    engaged, cyan information, magenta commanded, amber caution, red alarm. Engraved
+    small-caps bezel labels, flat 1px instrument bezels, no shadows.
+    STORY: One glance answers: what do I do now (magenta), is Rocky flying (green
+    rail), how is my life (bottom instruments). Any region drills in place; prose is
+    one page-swap away, never deleted.
+    FIRST VIEWPORT: annunciator strip top; DAY tape left; center display with magenta
+    next action and cyan waypoints; SYSTEMS rail right; four mini instruments under
+    the display; CDU scratchpad bottom.
+    FORM: Glass Cockpit — candidate 1 of 7, user-chosen pick; seed cc7e7d5d.
+    FINISH: unreviewed and undocumented is unfinished; this build ends with the
+    finish review, the verdict, DESIGN.md, and every shipping raster carrying its
+    provenance.
+    -->
+
+    <!-- ============ ANNUNCIATOR STRIP (FMA) ============ -->
+    <header class="fma">
+      <div class="brand">
+        <span class="brand-name">ROCKY OS</span>
+        <span class="brand-sub">Mission Control</span>
+      </div>
+      <div class="fma-cell" id="fma-rocky" title="Rocky job runner">
+        <span class="fma-label">Rocky</span>
+        <span class="fma-value mode-stby" id="fma-rocky-value">STBY</span>
+      </div>
+      <div class="fma-cell" title="Open tasks in today's note">
+        <span class="fma-label">Day</span>
+        <span class="fma-value" id="fma-day-value">—</span>
+      </div>
+      <div class="fma-cell" title="Live Claude terminals">
+        <span class="fma-label">Term</span>
+        <span class="fma-value" id="fma-term-value">—</span>
+      </div>
+      <div class="annunciators" id="annunciators"></div>
+      <div class="fma-clock">
+        <span id="fma-date"></span>
+        <span class="fma-time" id="fma-time"></span>
+      </div>
+      <button id="refresh" class="bezel-btn" title="Reload every panel"></button>
+    </header>
+
+    <!-- ============ BOARD ============ -->
+    <main class="board">
+      <!-- DAY tape -->
+      <aside class="tape tape-day">
+        <button class="tape-head" id="tasks-head" title="Open the full task list">
+          <span class="tape-title">Day</span>
+          <span class="tape-note" id="tasks-note"></span>
+        </button>
+        <div class="tape-scroll">
+          <div id="tape-tasks"></div>
+          <div class="tape-sub">Waypoints</div>
+          <div id="tape-agenda"></div>
+        </div>
+      </aside>
+
+      <!-- CENTER DISPLAY (page-swapped in place; the board never reflows) -->
+      <section class="display">
+        <div class="display-head">
+          <span class="display-title" id="display-title">Now</span>
+          <button class="bezel-btn display-back" id="display-back" title="Back to Now" hidden></button>
+        </div>
+        <div class="display-body" id="display-body"></div>
+        <!-- mini instruments: fixed row, never moves -->
+        <div class="instruments">
+          <button class="instr" id="instr-threads">
+            <span class="instr-value" id="instr-threads-value">—</span>
+            <span class="instr-label">Threads</span>
+            <span class="instr-note" id="instr-threads-note"></span>
+          </button>
+          <button class="instr" id="instr-projects">
+            <span class="instr-value" id="instr-projects-value">—</span>
+            <span class="instr-label">Projects</span>
+            <span class="instr-note" id="instr-projects-note"></span>
+          </button>
+          <button class="instr" id="instr-inbox">
+            <span class="instr-value" id="instr-inbox-value">—</span>
+            <span class="instr-label">Inbox</span>
+            <span class="instr-note" id="instr-inbox-note"></span>
+          </button>
+          <button class="instr" id="instr-health">
+            <span class="instr-spark" id="instr-health-spark"></span>
+            <span class="instr-label">Health</span>
+            <span class="instr-note" id="instr-health-note"></span>
+          </button>
+        </div>
+      </section>
+
+      <!-- SYSTEMS rail -->
+      <aside class="tape tape-sys">
+        <div class="tape-head static">
+          <span class="tape-title">Systems</span>
+          <span class="tape-note" id="sys-note"></span>
+        </div>
+        <div class="tape-scroll">
+          <div class="tape-sub first">Rocky jobs</div>
+          <div id="rail-jobs"></div>
+          <div class="tape-sub">Terminals</div>
+          <div id="rail-sessions"></div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- ============ CDU SCRATCHPAD ============ -->
+    <footer class="cdu">
+      <div class="cdu-row">
+        <span class="cdu-caret" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 1.5 7 5l-4 3.5"/></svg></span>
+        <input
+          id="cmd"
+          class="cdu-input"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="TELL ROCKY WHAT TO DO — ↵ DISPATCH · ⌘↵ TERMINAL"
+          autofocus
+        />
+        <button id="cmd-send" class="cdu-send">Dispatch</button>
+      </div>
+      <div class="cdu-foot">
+        <div class="modekeys" id="quick"></div>
+        <span class="cdu-status" id="cmd-status"></span>
+      </div>
+    </footer>
+
+    <script src="mission-control.js"></script>
+  </body>
+</html>

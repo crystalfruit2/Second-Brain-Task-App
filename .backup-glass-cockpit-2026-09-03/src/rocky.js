@@ -190,13 +190,6 @@ function renderStreamObject(obj) {
   return '';
 }
 
-function sessionIdOf(obj) {
-  if (!obj || typeof obj !== 'object') return null;
-  if (obj.type === 'system' && obj.subtype === 'init' && obj.session_id) return String(obj.session_id);
-  if (obj.type === 'result' && obj.session_id) return String(obj.session_id);
-  return null;
-}
-
 // ---------------------------------------------------------------------------
 // Jobs
 // ---------------------------------------------------------------------------
@@ -260,7 +253,6 @@ function publicJob(job) {
     endedAt: job.endedAt || null,
     exitCode: job.exitCode === undefined ? null : job.exitCode,
     output: job.output || '',
-    sessionId: job.sessionId || null,
     live: true,
   };
 }
@@ -331,15 +323,7 @@ function runningJobs() {
   return [...jobs.values()].filter((j) => j.state === 'running');
 }
 
-// Options beyond the original three exist for the Reading Room's side threads
-// (see reader.js), which reuse this runner instead of growing a second one:
-//   extraArgs   — appended verbatim to the claude argv (`--resume`, `--tools ""`…)
-//   model       — `--model <name>`; side threads are pinned to sonnet on cost
-//   skipDedup   — two tutor threads may legitimately share a label
-//   onSessionId — called once with the session id claude reports for this run
-//   onDone      — called with the final job snapshot (full output, not the
-//                 4KB persisted tail) when the process settles
-function dispatch({ prompt, label, cwd, extraArgs, model, skipDedup, onSessionId, onDone }) {
+function dispatch({ prompt, label, cwd }) {
   const text = String(prompt || '').trim();
   if (!text) throw new Error('Nothing to dispatch — the prompt is empty.');
 
@@ -347,7 +331,7 @@ function dispatch({ prompt, label, cwd, extraArgs, model, skipDedup, onSessionId
   // the same daily note at the same time. Same prompt (or same quick-action
   // label) already in flight => refuse, loudly, rather than dedupe silently.
   const running = runningJobs();
-  const dup = skipDedup ? null : running.find((j) => j.prompt === text || (label && j.label === label));
+  const dup = running.find((j) => j.prompt === text || (label && j.label === label));
   if (dup) {
     throw new Error(`"${label || firstLine(text, 48)}" is already running — let it finish first.`);
   }
@@ -380,8 +364,6 @@ function dispatch({ prompt, label, cwd, extraArgs, model, skipDedup, onSessionId
     killTimer: null,
     killRequested: false,
     child: null,
-    sessionId: null,
-    onDone: typeof onDone === 'function' ? onDone : null,
   };
 
   const args = [
@@ -394,11 +376,6 @@ function dispatch({ prompt, label, cwd, extraArgs, model, skipDedup, onSessionId
     '--include-partial-messages',
     '--verbose',
   ];
-  if (model) args.push('--model', String(model));
-  // Pushed one element at a time on purpose: `--tools ""` has to reach claude
-  // as an *empty argv element*, and a join/split round-trip would eat it.
-  if (Array.isArray(extraArgs)) for (const a of extraArgs) args.push(String(a));
-  job.args = args;
 
   const child = spawn(bin, args, {
     cwd: job.cwd,
@@ -426,21 +403,6 @@ function dispatch({ prompt, label, cwd, extraArgs, model, skipDedup, onSessionId
     } catch {
       append(job, line + '\n'); // not JSON — show it verbatim rather than hide it
       return;
-    }
-    // The session id shows up on the very first line (`system`/`init`) and
-    // again on the final `result`. With `--fork-session` the id claude reports
-    // is the *new* forked one, which is exactly what a caller wanting to
-    // `--resume` it later needs — so the last sighting wins.
-    const sid = sessionIdOf(obj);
-    if (sid && sid !== job.sessionId) {
-      job.sessionId = sid;
-      if (typeof onSessionId === 'function') {
-        try {
-          onSessionId(sid, job.id);
-        } catch {
-          /* a listener's bug must not take the job down */
-        }
-      }
     }
     append(job, renderStreamObject(obj));
   });
@@ -475,10 +437,7 @@ function dispatch({ prompt, label, cwd, extraArgs, model, skipDedup, onSessionId
   child.on('close', (code) => settle(code));
 
   emit('update', publicJob(job));
-  // The caller (and only the caller) also gets the exact argv that was
-  // spawned — reader.js logs it and the tests assert on it. It stays off the
-  // emitted/persisted snapshot: prompts are already in `prompt`.
-  return { ...publicJob(job), args: args.slice() };
+  return publicJob(job);
 }
 
 function finish(job, code, state) {
@@ -495,21 +454,6 @@ function finish(job, code, state) {
   // Map as well meant every job of the session pinned its 60KB tail in memory
   // for as long as the app stayed open.
   jobs.delete(job.id);
-  if (job.onDone) {
-    try {
-      job.onDone(publicJob(job));
-    } catch {
-      /* same rule as onSessionId: a listener's bug is not the job's problem */
-    }
-  }
-}
-
-// Pids of the `claude` processes this runner currently owns, so the Sessions
-// list can leave headless jobs out — they are not terminals anyone is reading.
-function livePids() {
-  return runningJobs()
-    .map((j) => (j.child && j.child.pid != null ? String(j.child.pid) : null))
-    .filter(Boolean);
 }
 
 // Signal the child's whole process group. spawn() used `detached: true`, so the
@@ -617,11 +561,6 @@ module.exports = {
   listJobs,
   openInTerminal,
   resolveClaudeBin,
-  livePids,
   // exported for the parser test script
   renderStreamObject,
-  // shared with transcripts.js — same chip/peek shape as the job monitor
-  summarizeToolInput,
-  firstLine,
-  textOfToolResult,
 };

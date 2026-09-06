@@ -5,7 +5,6 @@ const { execFile } = require('child_process');
 const vault = require('./vault');
 const sessions = require('./sessions');
 const rocky = require('./rocky');
-const reader = require('./reader');
 const { VAULT_PATH } = require('./config');
 
 let notesWin = null;
@@ -57,17 +56,6 @@ rocky.configure({
   onEvent: (kind, payload) => {
     if (missionWin && !missionWin.isDestroyed()) {
       missionWin.webContents.send(kind === 'output' ? 'rocky:output' : 'rocky:job', payload);
-    }
-  },
-});
-
-// Reading Room events are push-only as well — fs.watch on one transcript and
-// on ~/.claude/sessions, nothing else — and only exist while a reader is open.
-reader.configure({
-  vaultPath: VAULT_PATH,
-  onEvent: (kind, payload) => {
-    if (missionWin && !missionWin.isDestroyed()) {
-      missionWin.webContents.send(`reader:${kind}`, payload);
     }
   },
 });
@@ -280,11 +268,8 @@ function createMissionWindow() {
     minHeight: 560,
     icon: ICON_PATH,
     title: 'Rocky OS — Mission Control',
-    backgroundColor: '#000000',
+    backgroundColor: '#0a0d10',
     show: false,
-    // macOS: traffic lights float over the board's own header (dragging is
-    // handled by -webkit-app-region on the header). Windows keeps its frame.
-    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -295,41 +280,8 @@ function createMissionWindow() {
   missionWin.loadFile(path.join(__dirname, 'renderer', 'mission-control.html'));
   missionWin.once('ready-to-show', () => missionWin.show());
   missionWin.webContents.once('did-finish-load', startSessionPolling);
-  // Dev-only screenshot mode: MC_CAPTURE=<outdir> renders the board against the
-  // real vault, captures 1280×800 + 900×560, then quits. Never runs in prod.
-  if (process.env.MC_CAPTURE) {
-    missionWin.webContents.once('did-finish-load', async () => {
-      const fsp = require('fs').promises;
-      const out = process.env.MC_CAPTURE;
-      await fsp.mkdir(out, { recursive: true });
-      const shoot = async (w, h, name) => {
-        missionWin.setSize(w, h);
-        await new Promise((r) => setTimeout(r, 900));
-        const img = await missionWin.webContents.capturePage();
-        await fsp.writeFile(path.join(out, name), img.toPNG());
-      };
-      const js = (code) =>
-        missionWin.webContents
-          .executeJavaScript(code)
-          .catch((e) => console.error('MC_CAPTURE js failed:', e));
-      await new Promise((r) => setTimeout(r, 2200)); // let vault loads settle
-      await shoot(1280, 800, 'desktop.png');
-      await shoot(900, 560, 'user-900.png');
-      missionWin.setSize(1280, 800);
-      await js(`const c = document.getElementById('cmd'); c.value = '/start-day'; c.dispatchEvent(new Event('input'));`);
-      await shoot(1280, 800, 'armed.png');
-      await js(`document.getElementById('cmd').value = ''; document.getElementById('cmd').dispatchEvent(new Event('input')); document.getElementById('tasks-head').click();`);
-      await shoot(1280, 800, 'page-day.png');
-      await js(`document.getElementById('instr-threads').click();`);
-      await shoot(1280, 800, 'page-threads.png');
-      app.quit();
-    });
-  }
   missionWin.on('closed', () => {
     missionWin = null;
-    // No window, no reader: drop the transcript watch so a closed Mission
-    // Control costs nothing while the terminals keep writing.
-    reader.close();
     if (!sessionSubscribers().length) stopSessionPolling();
   });
 }
@@ -466,17 +418,6 @@ ipcMain.handle('rocky:terminal', (_e, { prompt }) =>
 ipcMain.handle('rocky:jobs', () => rocky.listJobs());
 ipcMain.handle('rocky:kill', (_e, id) => rocky.killJob(id));
 
-// ---- IPC: Reading Room ----
-// Side-thread answers stream over the same rocky:output / rocky:job channels
-// as every other job; the renderer filters by the jobId reader:ask returned.
-ipcMain.handle('reader:sessions', () => reader.listSessions());
-ipcMain.handle('reader:open', (_e, pid) => reader.open(pid));
-ipcMain.handle('reader:close', () => reader.close());
-ipcMain.handle('reader:ask', (_e, payload) => reader.ask(payload || {}));
-ipcMain.handle('reader:note', (_e, payload) => reader.note(payload || {}));
-ipcMain.handle('reader:saveTopic', (_e, payload) => reader.saveTopic(payload || {}));
-ipcMain.handle('reader:topics', () => reader.listTopics());
-
 ipcMain.on('window:hide', () => {
   if (notesWin) notesWin.hide();
 });
@@ -511,7 +452,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   stopSessionPolling();
-  reader.close();
   // Don't leave orphaned `claude` processes behind when the app goes away.
   rocky.killAll();
 });

@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-03T18:05:00+03:00",
+  "title": "Design System: Rocky OS",
+  "extensions": {
+    "colorMeta": {
+      "lantern-orange": { "role": "primary", "displayName": "Lantern Orange", "canonical": "#ff9f0a", "tonalRamp": ["oklch(20% 0.06 65)", "oklch(32% 0.09 65)", "oklch(45% 0.12 65)", "oklch(58% 0.15 65)", "oklch(70% 0.17 65)", "oklch(78% 0.16 65)", "oklch(87% 0.11 65)", "oklch(95% 0.05 65)"] },
+      "running-green": { "role": "secondary", "displayName": "Running Green", "canonical": "#30d158", "tonalRamp": ["oklch(20% 0.07 150)", "oklch(32% 0.11 150)", "oklch(45% 0.15 150)", "oklch(58% 0.18 150)", "oklch(70% 0.2 150)", "oklch(78% 0.19 150)", "oklch(87% 0.13 150)", "oklch(95% 0.06 150)"] },
+      "info-blue": { "role": "secondary", "displayName": "Info Blue", "canonical": "#409cff", "tonalRamp": ["oklch(20% 0.08 255)", "oklch(32% 0.12 255)", "oklch(45% 0.16 255)", "oklch(58% 0.18 255)", "oklch(68% 0.16 255)", "oklch(77% 0.13 255)", "oklch(86% 0.09 255)", "oklch(95% 0.04 255)"] },
+      "caution-yellow": { "role": "secondary", "displayName": "Caution Yellow", "canonical": "#ffd60a", "tonalRamp": ["oklch(20% 0.05 95)", "oklch(34% 0.08 95)", "oklch(48% 0.11 95)", "oklch(62% 0.14 95)", "oklch(75% 0.16 95)", "oklch(85% 0.17 95)", "oklch(90% 0.14 95)", "oklch(96% 0.07 95)"] },
+      "destroy-red": { "role": "secondary", "displayName": "Destroy Red", "canonical": "#ff453a", "tonalRamp": ["oklch(18% 0.08 28)", "oklch(30% 0.13 28)", "oklch(43% 0.17 28)", "oklch(55% 0.21 28)", "oklch(64% 0.22 28)", "oklch(72% 0.19 28)", "oklch(83% 0.12 28)", "oklch(94% 0.05 28)"] },
+      "true-black": { "role": "neutral", "displayName": "True Black", "canonical": "#000000", "tonalRamp": ["oklch(0% 0 0)", "oklch(14% 0 0)", "oklch(24% 0 0)", "oklch(36% 0 0)", "oklch(48% 0 0)", "oklch(62% 0 0)", "oklch(78% 0 0)", "oklch(95% 0 0)"] },
+      "elevated-card": { "role": "neutral", "displayName": "Elevated Card", "canonical": "#1c1c1e", "tonalRamp": ["#000000", "#101012", "#1c1c1e", "#2c2c2e", "#3a3a3c", "#48484a", "#636366", "#8e8e93"] },
+      "raised-fill": { "role": "neutral", "displayName": "Raised Fill", "canonical": "#2c2c2e", "tonalRamp": ["#000000", "#1c1c1e", "#2c2c2e", "#3a3a3c", "#48484a", "#636366", "#8e8e93", "#aeaeb2"] },
+      "control-fill": { "role": "neutral", "displayName": "Control Fill", "canonical": "rgba(120, 120, 128, 0.22)", "tonalRamp": ["rgba(120,120,128,0.08)", "rgba(120,120,128,0.14)", "rgba(120,120,128,0.22)", "rgba(120,120,128,0.32)", "rgba(120,120,128,0.44)", "rgba(120,120,128,0.58)", "rgba(120,120,128,0.74)", "rgba(120,120,128,0.9)"] },
+      "hairline": { "role": "neutral", "displayName": "Hairline Separator", "canonical": "rgba(84, 84, 88, 0.55)", "tonalRamp": ["rgba(84,84,88,0.15)", "rgba(84,84,88,0.25)", "rgba(84,84,88,0.35)", "rgba(84,84,88,0.45)", "rgba(84,84,88,0.55)", "rgba(84,84,88,0.7)", "rgba(84,84,88,0.85)", "rgba(84,84,88,1)"] },
+      "label": { "role": "neutral", "displayName": "Label (Primary)", "canonical": "#ffffff", "tonalRamp": ["rgba(235,235,245,0.12)", "rgba(235,235,245,0.22)", "rgba(235,235,245,0.32)", "rgba(235,235,245,0.45)", "rgba(235,235,245,0.62)", "rgba(235,235,245,0.78)", "rgba(235,235,245,0.9)", "#ffffff"] },
+      "label-secondary": { "role": "neutral", "displayName": "Label Secondary", "canonical": "rgba(235, 235, 245, 0.62)", "tonalRamp": ["rgba(235,235,245,0.12)", "rgba(235,235,245,0.22)", "rgba(235,235,245,0.32)", "rgba(235,235,245,0.45)", "rgba(235,235,245,0.62)", "rgba(235,235,245,0.78)", "rgba(235,235,245,0.9)", "#ffffff"] },
+      "label-tertiary": { "role": "neutral", "displayName": "Label Tertiary", "canonical": "rgba(235, 235, 245, 0.32)", "tonalRamp": ["rgba(235,235,245,0.12)", "rgba(235,235,245,0.22)", "rgba(235,235,245,0.32)", "rgba(235,235,245,0.45)", "rgba(235,235,245,0.62)", "rgba(235,235,245,0.78)", "rgba(235,235,245,0.9)", "#ffffff"] }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "Window brand titles — 'Mission Control', Dashboard h1. 20px/700, -0.02em." },
+      "now-display": { "displayName": "Now Display", "purpose": "The single commanded task line on the Now page; green when all clear. Largest text in the app, max-width 30em." },
+      "title": { "displayName": "Card Title", "purpose": "Card heads (17px/700 Mission Control; 15px/700 Dashboard panels)." },
+      "body": { "displayName": "Body", "purpose": "Task prose, list rows, inputs. 13px, word-break tolerant for long vault lines." },
+      "caption": { "displayName": "Caption", "purpose": "Supporting metadata at 12.5px in label-secondary." },
+      "label": { "displayName": "Section Label", "purpose": "The one grouped-list header voice: 11px/600 UPPERCASE 0.06em, everywhere." },
+      "mono": { "displayName": "Mono", "purpose": "Job logs (#101012 well) and inline code chips only. Never UI chrome." }
+    },
+    "shadows": [
+      { "name": "modal-sheet", "value": "0 24px 70px rgba(0, 0, 0, 0.6)", "purpose": "The one true shadow: the Dashboard notes overlay sheet over its rgba(0,0,0,0.55) scrim. All other depth is tonal." }
+    ],
+    "motion": [
+      { "name": "page-in", "value": "0.22s cubic-bezier(0.2, 0.7, 0.3, 1)", "purpose": "Center-display page swap: fade + 5px rise. Finite, event-driven, reduced-motion-guarded." },
+      { "name": "state-pulse", "value": "1.2s ease-out", "purpose": "One white-alpha background pulse when a job or mode flips state. Finite, reduced-motion-guarded." },
+      { "name": "send-arm", "value": "background 0.15s ease-out, color 0.15s ease-out", "purpose": "Composer send disc arming to solid lantern orange." },
+      { "name": "idle", "value": "none", "purpose": "Zero idle animation — PRODUCT.md battery hard rule. Nothing loops or pulses at rest." }
+    ],
+    "breakpoints": [
+      { "name": "narrow", "value": "1080px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The elevated #1C1C1E grouped card: title head, mask-faded scroll body, no border, no shadow.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-head\"><span class=\"ds-card-title\">Today</span><span class=\"ds-card-note\">6 open</span></div><div class=\"ds-card-body\">Rows live here, scrolling under a bottom mask fade.</div></div>",
+      "css": ".ds-card { background: #1c1c1e; border-radius: 14px; display: flex; flex-direction: column; width: 280px; height: 150px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif; color: #fff; } .ds-card-head { display: flex; align-items: baseline; gap: 8px; padding: 13px 16px 9px; } .ds-card-title { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; } .ds-card-note { font-size: 12.5px; color: rgba(235,235,245,0.62); margin-left: auto; font-variant-numeric: tabular-nums; } .ds-card-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 12px; font-size: 13px; line-height: 1.5; color: rgba(235,235,245,0.62); -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 12px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 12px), transparent); }"
+    },
+    {
+      "name": "Task Row (Reminders check)",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "iOS grouped-list row with a circular check: hover ring turns orange, done fills green 0.8 with a black checkmark.",
+      "html": "<div class=\"ds-ticks\"><div class=\"ds-tick\"><span class=\"ds-tick-check\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 18 18\" fill=\"none\"><circle cx=\"9\" cy=\"9\" r=\"7.75\" stroke=\"currentColor\" stroke-width=\"1.5\"/></svg></span><span class=\"ds-tick-label\">Draft the Kapı 2 mail</span></div><div class=\"ds-tick ds-done\"><span class=\"ds-tick-check\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 18 18\"><circle cx=\"9\" cy=\"9\" r=\"8\" fill=\"currentColor\"/><path d=\"M5.5 9.5 8 12l4.5-6\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></span><span class=\"ds-tick-label\">Push the vault</span></div><div class=\"ds-tick ds-commanded\"><span class=\"ds-tick-check\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 18 18\" fill=\"none\"><circle cx=\"9\" cy=\"9\" r=\"7.75\" stroke=\"currentColor\" stroke-width=\"1.5\"/></svg></span><span class=\"ds-tick-label\">Finish the MHB check</span></div></div>",
+      "css": ".ds-ticks { background: #1c1c1e; border-radius: 14px; padding: 6px 8px; width: 280px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif; } .ds-tick { display: flex; align-items: center; gap: 2px; border-radius: 8px; position: relative; cursor: pointer; } .ds-tick + .ds-tick::before { content: ''; position: absolute; left: 30px; right: 4px; top: 0; height: 1px; background: rgba(84,84,88,0.55); } .ds-tick:hover { background: rgba(255,255,255,0.05); } .ds-tick-check { display: flex; align-items: center; justify-content: center; width: 28px; height: 30px; flex-shrink: 0; color: rgba(235,235,245,0.32); } .ds-tick:hover .ds-tick-check { color: #ff9f0a; } .ds-tick-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 30px; color: #fff; padding-right: 6px; } .ds-done .ds-tick-check { color: rgba(48,209,88,0.8); } .ds-done .ds-tick-label { color: rgba(235,235,245,0.32); } .ds-commanded .ds-tick-label { color: #ff9f0a; font-weight: 600; }"
+    },
+    {
+      "name": "Status Pill",
+      "kind": "chip",
+      "refersTo": "status-pill",
+      "description": "Nav-bar capsule: quiet label plus a 600-weight semantic value (green engaged, secondary standby).",
+      "html": "<span class=\"ds-pill-status\"><span class=\"ds-pill-key\">Rocky</span><span class=\"ds-pill-val\">Running</span></span>",
+      "css": ".ds-pill-status { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; background: #1c1c1e; border-radius: 999px; white-space: nowrap; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif; } .ds-pill-key { font-size: 12px; color: rgba(235,235,245,0.62); } .ds-pill-val { font-size: 12.5px; font-weight: 600; color: #30d158; font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Mode Pill (engaged)",
+      "kind": "chip",
+      "refersTo": "mode-pill-engaged",
+      "description": "Quick-action capsule; engaged state rides a green 14% tint with a 6px key light.",
+      "html": "<button class=\"ds-modekey ds-engaged\"><span class=\"ds-keylight\"></span>Focus</button> <button class=\"ds-modekey\">/start-day</button>",
+      "css": ".ds-modekey { display: inline-flex; align-items: center; gap: 6px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif; font-size: 12px; font-weight: 500; color: rgba(235,235,245,0.62); background: #1c1c1e; border: none; border-radius: 999px; padding: 5px 13px; white-space: nowrap; cursor: pointer; } .ds-modekey:hover { color: #fff; background: #2c2c2e; } .ds-modekey:active { opacity: 0.72; } .ds-keylight { width: 6px; height: 6px; border-radius: 50%; background: #30d158; } .ds-engaged { color: #30d158; background: rgba(48,209,88,0.14); } .ds-engaged:hover { color: #30d158; background: rgba(48,209,88,0.2); }"
+    },
+    {
+      "name": "Composer + Armed Send",
+      "kind": "input",
+      "refersTo": "composer-input",
+      "description": "The iMessage composer: pill field with orange caret and focus border, 30px circular send that arms to solid lantern orange.",
+      "html": "<div class=\"ds-cdu\"><input class=\"ds-cdu-input\" placeholder=\"Message Rocky…\" value=\"Route the inbox\" /><button class=\"ds-cdu-send ds-armed\" aria-label=\"Send\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 14 14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M7 12V2\"/><path d=\"M3 6l4-4 4 4\"/></svg></button></div>",
+      "css": ".ds-cdu { display: flex; align-items: center; gap: 8px; width: 300px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif; } .ds-cdu-input { flex: 1; min-width: 0; background: #1c1c1e; color: #fff; caret-color: #ff9f0a; border: 1px solid #2c2c2e; border-radius: 999px; padding: 8px 16px; font-size: 13px; outline: none; } .ds-cdu-input::placeholder { color: rgba(235,235,245,0.62); } .ds-cdu-input:focus { border-color: rgba(255,159,10,0.55); } .ds-cdu-send { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: none; border-radius: 50%; background: rgba(120,120,128,0.22); color: rgba(235,235,245,0.32); flex-shrink: 0; cursor: pointer; transition: background 0.15s ease-out, color 0.15s ease-out; } .ds-cdu-send.ds-armed { background: #ff9f0a; color: #000; } .ds-cdu-send.ds-armed:hover { background: #ffb340; }"
+    },
+    {
+      "name": "Annunciator (caution)",
+      "kind": "chip",
+      "refersTo": "status-pill",
+      "description": "Yellow caution capsule for things due attention (reviews due, unrouted captures).",
+      "html": "<button class=\"ds-annunciator\">2 unrouted captures</button>",
+      "css": ".ds-annunciator { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif; font-size: 12px; font-weight: 600; color: #ffd60a; background: rgba(255,214,10,0.12); border: none; border-radius: 999px; padding: 5px 12px; white-space: nowrap; cursor: pointer; } .ds-annunciator:hover { background: rgba(255,214,10,0.2); }"
+    },
+    {
+      "name": "Job Row (activity rail)",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "Running-agent row: status dot light, green running name, tabular meta, circular red stop.",
+      "html": "<div class=\"ds-rail\"><button class=\"ds-rail-job\"><span class=\"ds-rail-light\"></span><span class=\"ds-rail-name\">route-inbox</span><span class=\"ds-rail-meta\">2m 14s</span><span class=\"ds-rail-stop\"><svg width=\"8\" height=\"8\" viewBox=\"0 0 8 8\"><rect width=\"8\" height=\"8\" rx=\"1\" fill=\"currentColor\"/></svg></span></button></div>",
+      "css": ".ds-rail { background: #1c1c1e; border-radius: 14px; padding: 6px 8px; width: 280px; } .ds-rail-job { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: none; background: none; border-radius: 8px; cursor: pointer; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif; } .ds-rail-job:hover { background: rgba(255,255,255,0.05); } .ds-rail-light { width: 8px; height: 8px; border-radius: 50%; background: #30d158; flex-shrink: 0; } .ds-rail-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: #30d158; text-align: left; } .ds-rail-meta { font-size: 11.5px; color: rgba(235,235,245,0.32); flex-shrink: 0; font-variant-numeric: tabular-nums; } .ds-rail-stop { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(255,69,58,0.15); color: #ff453a; flex-shrink: 0; } .ds-rail-job:hover .ds-rail-stop { background: rgba(255,69,58,0.3); }"
+    },
+    {
+      "name": "Stat Tile",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "Instrument-footer tile: 20px/700 tabular value over the one uppercase label voice; yellow when cautioning.",
+      "html": "<div class=\"ds-instr-row\"><button class=\"ds-instr\"><span class=\"ds-instr-value\">14</span><span class=\"ds-instr-label\">Tasks</span></button><button class=\"ds-instr\"><span class=\"ds-instr-value ds-caution\">3</span><span class=\"ds-instr-label\">Inbox</span></button></div>",
+      "css": ".ds-instr-row { display: grid; grid-template-columns: 1fr 1fr; width: 240px; background: #1c1c1e; border-top: 1px solid rgba(84,84,88,0.55); border-radius: 0 0 14px 14px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif; } .ds-instr { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 16px 11px; border: none; background: none; border-right: 1px solid rgba(84,84,88,0.55); cursor: pointer; } .ds-instr:last-child { border-right: none; } .ds-instr:hover { background: rgba(255,255,255,0.05); } .ds-instr-value { font-size: 20px; font-weight: 700; line-height: 1.2; color: #fff; font-variant-numeric: tabular-nums; } .ds-instr-value.ds-caution { color: #ffd60a; } .ds-instr-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(235,235,245,0.62); }"
+    },
+    {
+      "name": "Section Label",
+      "kind": "custom",
+      "refersTo": "section-label",
+      "description": "The one grouped-list header voice used by every group header in all three windows.",
+      "html": "<div class=\"ds-section-label\">Life Threads</div>",
+      "css": ".ds-section-label { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(235,235,245,0.62); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The First-Party Night Board",
+    "overview": "Rocky OS looks and behaves like an app Apple shipped in dark mode — the day runs in the grammar of Reminders, Fitness and iMessage. A true-black ground carries elevated #1C1C1E cards; inside them, iOS grouped-list rows are cut by inset hairline separators; the composer at the foot of Mission Control is an iMessage field with a filled circular ↑ send. The system explicitly refuses two defaults at once: the text-dense terminal dashboard and the cockpit costume. Nothing is styled like an instrument; everything is styled like a list, a pill, or a tile.\n\nColor is a strict grammar, not a mood. One brand tint — lantern orange, from Rocky's own icon — is reserved for the commanded next action and the armed send. Everything else speaks in Apple's semantic voices: green runs (and fills done checks), blue informs, yellow cautions, red destroys. The board sits beside Alp's work at night, so the ground stays black, motion stays finite and event-driven, and nothing glows idly.",
+    "keyCharacteristics": [
+      "True-black ground, #1C1C1E cards, tonal layering — no structural shadows",
+      "One command tint (lantern orange #ff9f0a); four semantic colors with fixed jobs",
+      "SF Pro via the system stack (CSP forbids remote fonts — the stack is the deliberate vehicle)",
+      "Circular Reminders checks, pill chips, iMessage composer",
+      "Zero idle animation; every animation is finite, event-driven, and reduced-motion-guarded"
+    ],
+    "rules": [
+      { "name": "The One Command Rule", "body": "Lantern orange appears only where Rocky commands or is about to act: the next action, the armed send, focus, and act-on-hover. Status never borrows it; done states are green, not orange.", "section": "colors" },
+      { "name": "The Semantic Voice Rule", "body": "Green runs, blue informs, yellow cautions, red destroys. Semantic colors ride on tinted pill fills of themselves (12–15% alpha) rather than on new surface colors.", "section": "colors" },
+      { "name": "The One Label Voice Rule", "body": "Every section header in every window is the same 11px/600 uppercase 0.06em treatment. No second header style exists.", "section": "typography" },
+      { "name": "The Tabular Time Rule", "body": "Anything numeric that updates — clocks, counts, durations, dates — sets font-variant-numeric: tabular-nums.", "section": "typography" },
+      { "name": "The Tonal Ladder Rule", "body": "Depth = one step up the neutral ladder, never a shadow. Shadows are reserved for true modal sheets.", "section": "elevation" },
+      { "name": "The Glass Only Floats Rule", "body": "Translucency belongs exclusively to the always-on-top widget; docked windows are opaque black-and-card.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep lantern orange scarce — next action, armed send, focus, act-on-hover; if orange marks a status, it's wrong.",
+      "Do fill done checks green at 0.8 alpha with a black checkmark; done text drops to label-tertiary.",
+      "Do end every in-card scroll region with a 12–14px bottom mask fade; never hard-clip content at a card edge.",
+      "Do make every animation finite and event-driven — page-in 0.22s cubic-bezier(0.2, 0.7, 0.3, 1) on center-display swaps, 1.2s ease-out state-pulse on job/mode flips — and guard each with prefers-reduced-motion.",
+      "Do inset row hairlines to the text edge and set tabular-nums on all live numbers.",
+      "Do draw icons as inline round-capped stroke SVGs from the existing seven-glyph set."
+    ],
+    "donts": [
+      "Don't loop, idle-animate, or pulse anything at rest — battery is a product hard rule; zero idle CPU from the UI.",
+      "Don't load remote fonts or scripts; the CSP (default-src 'self') makes the system stack the design.",
+      "Don't put shadows or borders on cards; depth is the tonal ladder. The modal sheet's shadow is the only exception.",
+      "Don't use translucency or backdrop blur outside the floating Notes widget.",
+      "Don't reintroduce cockpit costume — no bezels, engraved labels, mono UI chrome, or instrument-panel framing; mono is for logs and code chips only.",
+      "Don't invent an eighth icon style, an icon font, or emoji chrome; don't add a second section-header voice."
+    ]
+  }
+}

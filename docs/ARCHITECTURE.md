@@ -710,3 +710,48 @@ clears its own busy state.
 This repo is job-visible, so Claude edits the code but I commit and push it
 myself — no `Co-Authored-By: Claude` trailer on any commit here. That's
 different from the vault repo itself, which Claude auto-commits normally.
+
+## Reading Room (2026-09-05)
+
+I built this because I was running four Claude Code terminals at once and the
+long explanations — the Yonga signal-processing ones especially — were
+unreadable in a terminal. Every time I hit a term I didn't get, I had to scroll
+up, ask, scroll back down and find my place again. Reading in Obsidian didn't
+feel native either. So Mission Control got a page that shows one terminal's
+conversation as clean prose, live, and lets me select a passage and ask about
+it right there.
+
+**What it reads.** Every interactive session writes an append-only JSONL under
+`~/.claude/projects/<cwd-slug>/<sessionId>.jsonl`, and `~/.claude/sessions/
+<pid>.json` says which sessionId a terminal is on right now (plus busy/idle).
+`src/transcripts.js` reduces those lines to turns — user prompts, assistant
+prose, a folded row per run of tool calls, API errors — with the noise (hook
+payloads, snapshots, slash-command echoes, `<system-reminder>` blocks, thinking)
+dropped. One thing I got wrong on paper: assistant records serialise the whole
+`message` *before* their top-level `type`, so the cheap sniff that decides
+whether a line is worth parsing keys on `"role":"assistant"` instead.
+`test/transcripts.test.js` runs the reducer over three real transcripts.
+
+**How the tail works.** `open` reads the file once from byte 0, then keeps a
+byte offset and an `fs.watch` on that one file (kqueue fires on append), reads
+only what's new, carries a partial trailing line to the next read, and pushes
+the touched turns to the renderer, which upserts by uuid. A second `fs.watch`
+on `~/.claude/sessions/` catches `/clear` (sessionId changes → swap files) and
+busy/idle flips. Both watches coalesce to 150 ms and die on `reader:close`,
+window close and quit. Nothing polls; with no reader open this costs zero.
+
+**Why mini-session is the default and fork is the upgrade.** A side question
+spawns `claude -p` on sonnet with `--tools ""` and `--setting-sources user`
+(project hooks fired inside the tutor otherwise and tried to route my inbox),
+given only the passage, the turn it came from (≤6000 chars) and the prompt
+before it (≤1500). That's 3–5 s and a few cents. "Ask with full context"
+forks the main session instead (`--resume … --fork-session`): measured 11.7 s
+and $0.45 on the first call because it re-caches ~110k tokens — and $2.40 if
+it ran on Fable, which is why the fork is pinned to sonnet and one fork per
+main session is kept and resumed for later asks.
+
+**How the note-back closes the loop.** "Terminale not bırak" appends the Q&A
+to `~/.claude/reading-room/notes/<mainSessionId>.md`; the vault's
+`reading-room-notes.sh` UserPromptSubmit hook renames-then-reads it on my next
+prompt in that terminal and injects it as context, so the main session knows
+what I already worked through and goes deeper instead of re-explaining.

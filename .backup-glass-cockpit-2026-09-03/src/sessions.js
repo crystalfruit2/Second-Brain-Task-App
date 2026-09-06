@@ -10,8 +10,6 @@ const path = require('path');
 const fs = require('fs');
 const { VAULT_PATH } = require('./config');
 const vault = require('./vault');
-const rocky = require('./rocky');
-const { readSessionInfo } = require('./transcripts');
 
 function run(cmd, args) {
   return new Promise((resolve) => {
@@ -96,37 +94,19 @@ function matchRegistry(cwd, registryRows) {
 // what's left to tell two same-directory sessions apart at a glance; the
 // session's own notes (written by hand, or by Claude — see vault.js) are
 // where the real "what is this one for" answer lives.
-function projectNameFor(cwd, match) {
-  return match ? match.row.name.replace(/\s*\([^)]*\)\s*/g, ' ').trim() : path.basename(cwd);
-}
-
-// Registry-friendly name for a directory, for callers that already know the
-// cwd (the Reading Room) and don't need a ps/lsof pass.
-function projectNameForCwd(cwd) {
-  return projectNameFor(cwd, matchRegistry(cwd, vault.listProjects()));
-}
-
 async function listSessions() {
   const procs = await listClaudeProcesses();
   const registryRows = vault.listProjects();
   const matchCache = new Map(); // cwd -> matchRegistry() result, avoids re-scanning the registry per process
   const out = [];
-  // Headless jobs Rocky itself launched are `claude` processes too, but
-  // nobody is typing into them — leave them out of the terminals list.
-  const rockyPids = new Set(rocky.livePids());
 
   for (const proc of procs) {
-    if (rockyPids.has(proc.pid)) continue;
     const cwd = await cwdForPid(proc.pid);
     if (!cwd) continue;
     if (!matchCache.has(cwd)) matchCache.set(cwd, matchRegistry(cwd, registryRows));
     const match = matchCache.get(cwd);
-    const projectName = projectNameFor(cwd, match);
+    const projectName = match ? match.row.name.replace(/\s*\([^)]*\)\s*/g, ' ').trim() : path.basename(cwd);
     const slug = `${slugify(projectName || path.basename(cwd))}-${proc.pid}`;
-    // The CLI's own record of this pid: which conversation it's on right now
-    // (survives /clear, unlike anything ps can tell us), its derived name,
-    // and whether it's busy or waiting for input.
-    const live = readSessionInfo(proc.pid);
     out.push({
       cwd,
       name: projectName,
@@ -137,10 +117,6 @@ async function listSessions() {
       pids: [proc.pid], // kept for renderer backward-compat (used to mean "grouped pids")
       etime: proc.etime,
       hasNotes: vault.hasSessionNotes(slug),
-      sessionId: live ? live.sessionId : null,
-      sessionName: live ? live.name : null,
-      activity: live ? live.status : 'unknown',
-      activityAt: live ? live.updatedAt : 0,
     });
   }
 
@@ -149,4 +125,4 @@ async function listSessions() {
   return out.sort((a, b) => a.name.localeCompare(b.name) || a.etime.localeCompare(b.etime));
 }
 
-module.exports = { listSessions, slugify, projectNameForCwd };
+module.exports = { listSessions, slugify };
