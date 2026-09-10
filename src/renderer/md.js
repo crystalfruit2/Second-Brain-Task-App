@@ -12,13 +12,45 @@
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
+
+  // [[Note]], [[Note#Heading]], [[Note|alias]] — Obsidian's own link syntax.
+  // Rendered as a <span data-wl> the note page turns into in-app navigation
+  // (main resolves the basename the way Obsidian does). ![[embeds]] stay text.
+  const WIKILINK_RE = /^(!?)\[\[([^\[\]|#]+)(?:#([^\[\]|]+))?(?:\|([^\[\]]+))?\]\]/;
+  const wikilink = {
+    name: 'wikilink',
+    level: 'inline',
+    start(src) {
+      const i = src.search(/!?\[\[/);
+      return i < 0 ? undefined : i;
+    },
+    tokenizer(src) {
+      const m = WIKILINK_RE.exec(src);
+      if (!m) return undefined;
+      return {
+        type: 'wikilink',
+        raw: m[0],
+        embed: !!m[1],
+        target: m[2].trim(),
+        heading: (m[3] || '').trim(),
+        alias: (m[4] || '').trim(),
+      };
+    },
+    renderer(tok) {
+      const label = tok.alias || (tok.heading ? `${tok.target} › ${tok.heading}` : tok.target);
+      if (tok.embed) return `<span class="wl-embed">${escapeText(label)}</span>`;
+      return `<span class="wl" role="link" tabindex="0" data-wl="${escapeText(tok.target)}" data-wl-heading="${escapeText(tok.heading)}">${escapeText(label)}</span>`;
+    },
+  };
 
   function configure() {
     if (configured || !window.marked) return;
     configured = true;
     window.marked.use({
+      extensions: [wikilink],
       gfm: true,
       breaks: false,
       async: false,

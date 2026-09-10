@@ -56,6 +56,12 @@ contextBridge.exposeInMainWorld('brain', {
   threadNote: (payload) => ipcRenderer.invoke('reader:note', payload), // { pid, threadId } -> { ok, file }
   threadSave: (payload) => ipcRenderer.invoke('reader:saveTopic', payload), // { pid, threadId, topicFile } -> { ok, file }
   listTopics: () => ipcRenderer.invoke('reader:topics'), // -> [{ file, title }] newest first
+  // ---- Mission Control: note page (rocky://open?file=…) ----
+  readNote: (rel) => ipcRenderer.invoke('note:read', rel),
+  // -> { ok, rel, title, meta, md, mtime } | { ok:false, error }
+  resolveNoteLink: (target) => ipcRenderer.invoke('note:resolveLink', target), // [[target]] -> rel | null
+  openInObsidian: (rel) => ipcRenderer.invoke('note:openInObsidian', rel),
+  onNoteOpen: (cb) => ipcRenderer.on('note:open', (_e, payload) => cb(payload)), // { file, heading }
   pinClaude: () => ipcRenderer.invoke('window:pinClaude'),
   cigCount: () => ipcRenderer.invoke('health:cigCount'),
   logCig: (delta) => ipcRenderer.invoke('health:cigLog', delta),

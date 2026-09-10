@@ -21,6 +21,10 @@ card, float a top-right card. Position/size are remembered between launches.
 Planned next: the 3-panel **Tasks / Reading / Projects** dashboard, and a global
 hotkey to summon the widget (see the vault note `Projects/Second-Brain-Task-App.md`).
 
+**Deep links:** `rocky://open?file=Areas/Idea-Garden` (optionally `&heading=…`)
+opens that vault note in Mission Control — Cmd+double-click it in Terminal.app.
+Only the installed build claims the scheme; see `docs/ARCHITECTURE.md`.
+
 ## Run
 
 ```powershell

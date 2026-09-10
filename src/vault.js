@@ -825,7 +825,120 @@ function readAgenda() {
   });
 }
 
+// ---------- Deep-linked notes (rocky://open?file=…) ----------
+// Any vault-relative markdown file, read for the Mission Control note page.
+// Frontmatter is split off (rendered as a small meta row, not as a table);
+// the title comes from frontmatter `title`, else the first H1, else the file
+// name. Same in-vault guard as every other path-taking call.
+const NOTE_SKIP_DIRS = new Set(['.git', '.obsidian', '.trash', 'node_modules', '.claude']);
+
+function inVault(rel) {
+  const abs = path.resolve(VAULT_PATH, String(rel || ''));
+  const root = path.resolve(VAULT_PATH);
+  if (abs !== root && !abs.startsWith(root + path.sep)) return null;
+  return abs;
+}
+
+function splitFrontmatter(content) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(content);
+  if (!m) return { meta: {}, body: content };
+  const meta = {};
+  let key = null;
+  for (const line of m[1].split(/\r?\n/)) {
+    const kv = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+    if (kv) {
+      key = kv[1];
+      meta[key] = kv[2].trim() === '' ? [] : kv[2].trim();
+    } else if (key && /^\s*-\s+/.test(line) && Array.isArray(meta[key])) {
+      meta[key].push(line.replace(/^\s*-\s+/, '').trim());
+    }
+  }
+  return { meta, body: content.slice(m[0].length) };
+}
+
+function readNote(rel) {
+  const abs = inVault(rel);
+  if (!abs) return { ok: false, error: 'outside the vault' };
+  let content;
+  try {
+    content = fs.readFileSync(abs, 'utf8');
+  } catch (e) {
+    return { ok: false, error: e.code === 'ENOENT' ? 'no such note' : e.message };
+  }
+  const { meta, body } = splitFrontmatter(content);
+  const h1 = /^#\s+(.+)$/m.exec(body);
+  const title =
+    (typeof meta.title === 'string' && meta.title.replace(/^["']|["']$/g, '')) ||
+    (h1 && h1[1].trim()) ||
+    path.basename(abs, '.md');
+  let mtime = null;
+  try {
+    mtime = fs.statSync(abs).mtime.toISOString();
+  } catch {
+    /* non-fatal */
+  }
+  return {
+    ok: true,
+    file: abs,
+    rel: path.relative(VAULT_PATH, abs).split(path.sep).join('/'),
+    title,
+    meta,
+    md: body,
+    mtime,
+  };
+}
+
+// [[wikilink]] targets are note names, not paths — Obsidian resolves them by
+// basename anywhere in the vault. One walk of the tree, cached for a minute.
+let noteIndex = null; // Map<lowercased basename without .md, rel path[]>
+let noteIndexAt = 0;
+const NOTE_INDEX_TTL_MS = 60_000;
+
+function buildNoteIndex() {
+  const idx = new Map();
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const ent of entries) {
+      if (ent.name.startsWith('.') && ent.isDirectory()) continue;
+      if (NOTE_SKIP_DIRS.has(ent.name)) continue;
+      const abs = path.join(dir, ent.name);
+      if (ent.isDirectory()) walk(abs);
+      else if (/\.md$/i.test(ent.name)) {
+        const rel = path.relative(VAULT_PATH, abs).split(path.sep).join('/');
+        const key = ent.name.replace(/\.md$/i, '').toLowerCase();
+        if (!idx.has(key)) idx.set(key, []);
+        idx.get(key).push(rel);
+      }
+    }
+  };
+  walk(VAULT_PATH);
+  return idx;
+}
+
+function resolveWikilink(target) {
+  let t = String(target || '').trim().replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!t) return null;
+  // A path-shaped target ("Areas/Health", "Projects/X/Y.md") wins outright.
+  const direct = inVault(/\.md$/i.test(t) ? t : `${t}.md`);
+  if (direct && fs.existsSync(direct)) return path.relative(VAULT_PATH, direct).split(path.sep).join('/');
+  if (!noteIndex || Date.now() - noteIndexAt > NOTE_INDEX_TTL_MS) {
+    noteIndex = buildNoteIndex();
+    noteIndexAt = Date.now();
+  }
+  const hits = noteIndex.get(path.posix.basename(t).replace(/\.md$/i, '').toLowerCase());
+  if (!hits || !hits.length) return null;
+  // Same ambiguity rule as Obsidian: shortest path wins.
+  return hits.slice().sort((a, b) => a.length - b.length)[0];
+}
+
 module.exports = {
+  readNote,
+  resolveWikilink,
   appendNote,
   readTodayNotes,
   listTodayTasks,

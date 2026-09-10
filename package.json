@@ -5,7 +5,8 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "build:mac": "electron-builder --mac --arm64 && codesign --deep --force --sign - \"dist/mac-arm64/Rocky OS.app\""
+    "build:mac": "electron-builder --mac --arm64 && codesign --deep --force --sign - \"dist/mac-arm64/Rocky OS.app\"",
+    "test": "node --test test/deeplink.test.js && node test/transcripts.test.js"
   },
   "author": "Alp Eldam",
   "license": "MIT",
@@ -37,6 +38,14 @@
         "zip"
       ],
       "identity": null
-    }
+    },
+    "protocols": [
+      {
+        "name": "Rocky OS",
+        "schemes": [
+          "rocky"
+        ]
+      }
+    ]
   }
 }

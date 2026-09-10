@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
@@ -7,6 +7,7 @@ const sessions = require('./sessions');
 const rocky = require('./rocky');
 const reader = require('./reader');
 const { VAULT_PATH } = require('./config');
+const { parseRockyUrl } = require('./deeplink');
 
 let notesWin = null;
 let dashboardWin = null;
@@ -297,7 +298,7 @@ function createMissionWindow() {
   missionWin.webContents.once('did-finish-load', startSessionPolling);
   // Dev-only screenshot mode: MC_CAPTURE=<outdir> renders the board against the
   // real vault, captures 1280×800 + 900×560, then quits. Never runs in prod.
-  if (process.env.MC_CAPTURE) {
+  if (process.env.MC_CAPTURE && !process.env.ROCKY_OPEN_URL) {
     missionWin.webContents.once('did-finish-load', async () => {
       const fsp = require('fs').promises;
       const out = process.env.MC_CAPTURE;
@@ -333,6 +334,70 @@ function createMissionWindow() {
     if (!sessionSubscribers().length) stopSessionPolling();
   });
 }
+
+// ---- rocky:// deep links ----
+// `rocky://open?file=<vault-relative path>` opens that note on Mission
+// Control's center display. Claude prints these next to every vault path it
+// names in the terminal (Cmd+double-click in Terminal.app), so the note lands
+// here instead of being copy-pasted into Finder. Registration only happens in
+// packaged builds: `electron .` would otherwise steal the scheme from the
+// installed app for the whole machine.
+//
+// macOS delivers the URL via `open-url` (possibly before `ready`, possibly to
+// an already-running instance — the single-instance lock keeps it one app).
+// Windows/Linux deliver it as an argv entry of a *second* instance, which the
+// lock forwards to us as `second-instance`.
+let pendingDeepLink = null;
+
+function handleDeepLink(raw) {
+  const link = parseRockyUrl(raw);
+  if (!link) return false;
+  if (!app.isReady()) {
+    pendingDeepLink = raw;
+    return true;
+  }
+  createMissionWindow();
+  const deliver = () => {
+    if (!missionWin || missionWin.isDestroyed()) return;
+    missionWin.webContents.send('note:open', { file: link.file, heading: link.heading });
+    if (missionWin.isMinimized()) missionWin.restore();
+    missionWin.show();
+    // Activation has to happen on a later tick: called synchronously inside
+    // `open-url` macOS ignores it and the terminal keeps the foreground.
+    setTimeout(() => {
+      if (!missionWin || missionWin.isDestroyed()) return;
+      app.focus({ steal: true });
+      missionWin.focus();
+    }, 60);
+  };
+  if (missionWin.webContents.isLoadingMainFrame()) missionWin.webContents.once('did-finish-load', deliver);
+  else deliver();
+  return true;
+}
+
+function deepLinkInArgv(argv) {
+  return (argv || []).find((a) => typeof a === 'string' && a.startsWith('rocky://')) || null;
+}
+
+// Both are packaged-only: `electron .` shares userData with the installed app,
+// so a dev lock would just make the dev instance exit while Rocky OS is up.
+if (app.isPackaged) {
+  app.setAsDefaultProtocolClient('rocky');
+  if (!app.requestSingleInstanceLock()) {
+    app.quit();
+  } else {
+    app.on('second-instance', (_e, argv) => {
+      const url = deepLinkInArgv(argv);
+      if (url) handleDeepLink(url);
+      else createMissionWindow();
+    });
+  }
+}
+
+app.on('open-url', (e, url) => {
+  e.preventDefault();
+  handleDeepLink(url);
+});
 
 const PIN_SCRIPT = path.join(__dirname, 'native', 'pin-window.ps1');
 const IS_WINDOWS = process.platform === 'win32';
@@ -453,6 +518,18 @@ ipcMain.handle('mc:health', () => vault.readHealth());
 ipcMain.handle('mc:reviewsDue', () => vault.reviewsDue());
 ipcMain.handle('mc:agenda', () => vault.readAgenda());
 
+// ---- IPC: note page (deep-linked vault notes) ----
+ipcMain.handle('note:read', (_e, rel) => vault.readNote(rel));
+ipcMain.handle('note:resolveLink', (_e, target) => vault.resolveWikilink(target));
+// The only outbound navigation this app makes: hand the same note to Obsidian.
+// Vault name = folder name; `assertInVault` keeps the target a real vault path.
+ipcMain.handle('note:openInObsidian', (_e, rel) => {
+  const abs = assertInVault(path.join(VAULT_PATH, String(rel || '')));
+  const relClean = path.relative(VAULT_PATH, abs).split(path.sep).join('/').replace(/\.md$/i, '');
+  const q = new URLSearchParams({ vault: path.basename(VAULT_PATH), file: relClean });
+  return shell.openExternal(`obsidian://open?${q.toString()}`).then(() => true);
+});
+
 // ---- IPC: Rocky jobs ----
 // cwd is always the vault root so the vault's CLAUDE.md, skills and hooks are
 // in play — the whole point is that this dispatches to *my* Rocky, not a
@@ -502,6 +579,28 @@ app.whenReady().then(() => {
   // Control did nothing at all. createMissionWindow() already shows/focuses an
   // existing window, so calling it unconditionally is the right behavior.
   app.on('activate', () => createMissionWindow());
+
+  // A deep link that arrived before `ready` (cold launch from a terminal click),
+  // or came in via argv on Windows/Linux.
+  const bootLink = pendingDeepLink || deepLinkInArgv(process.argv);
+  pendingDeepLink = null;
+  if (bootLink) handleDeepLink(bootLink);
+
+  // Dev-only: ROCKY_OPEN_URL=<rocky://…> opens that link once the board is up;
+  // with MC_CAPTURE=<outdir> too, screenshots the result and quits.
+  if (process.env.ROCKY_OPEN_URL && missionWin) {
+    missionWin.webContents.once('did-finish-load', async () => {
+      await new Promise((r) => setTimeout(r, 1500));
+      handleDeepLink(process.env.ROCKY_OPEN_URL);
+      if (!process.env.MC_CAPTURE) return;
+      await new Promise((r) => setTimeout(r, 1500));
+      const fsp = require('fs').promises;
+      await fsp.mkdir(process.env.MC_CAPTURE, { recursive: true });
+      const img = await missionWin.webContents.capturePage();
+      await fsp.writeFile(path.join(process.env.MC_CAPTURE, 'deeplink.png'), img.toPNG());
+      app.quit();
+    });
+  }
 });
 
 // Keep running in the tray when the window is closed — only real quit exits.

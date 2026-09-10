@@ -755,3 +755,37 @@ to `~/.claude/reading-room/notes/<mainSessionId>.md`; the vault's
 `reading-room-notes.sh` UserPromptSubmit hook renames-then-reads it on my next
 prompt in that terminal and injects it as context, so the main session knows
 what I already worked through and goes deeper instead of re-explaining.
+
+## Deep links — `rocky://` (2026-09-10)
+
+**Why.** Claude names vault paths in the terminal all day; Terminal.app makes
+none of them clickable, so every one meant copy → Finder/Obsidian → paste.
+Terminal.app *does* open URLs on Cmd+double-click, so the vault's CLAUDE.md
+now prints `rocky://open?file=<path>` (and an `obsidian://` twin) next to every
+path, and this app claims the scheme.
+
+**Shape.** `rocky://open?file=Areas/Idea-Garden[&heading=Seeds]`; also accepts
+Obsidian's `file=Note%23Heading` and a path form `rocky://open/Daily/2026-09-10`.
+Parsing is pure (`src/deeplink.js`, `test/deeplink.test.js`) — traversal and
+non-`open` actions come back null and are ignored.
+
+**Delivery.** `package.json → build.protocols` puts the scheme in Info.plist;
+`main.js` calls `setAsDefaultProtocolClient` and takes the single-instance
+lock **only when packaged** (dev shares userData with the installed app, so a
+dev lock would just make `electron .` exit). macOS delivers `open-url`
+(queued if it lands before `ready`), Windows/Linux deliver argv on
+`second-instance`. The handler makes sure Mission Control exists, sends
+`note:open {file, heading}` to it, and activates the app on a deferred tick
+(synchronous activation inside `open-url` is ignored and the terminal keeps
+the foreground).
+
+**Note page.** A new center-display page `note:<rel>` renders the note with
+the Reading Room's prose styles: meta row (path, tags, status, an "Obsidian"
+button that is this app's only outbound navigation — `shell.openExternal` on
+the matching `obsidian://` URL), then the body through `renderMarkdown`.
+`md.js` gained a marked extension for `[[wikilinks]]` → `<span data-wl>`;
+clicks resolve the target in main (`vault.resolveWikilink`, basename index
+cached 60 s, shortest path wins like Obsidian) and navigate in-app. A deep
+link with a heading scrolls to it and flashes it lantern-orange. Nothing on
+this page writes to the vault. Dev check: `ROCKY_OPEN_URL=<url> MC_CAPTURE=<dir>
+npx electron .` opens the link and screenshots it.

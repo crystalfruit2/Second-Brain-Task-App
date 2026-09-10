@@ -267,9 +267,10 @@ function showPage(page) {
   jobLogEl = null;
   const isJob = page.startsWith('job:');
   const isRead = page.startsWith('read:');
+  const isNote = page.startsWith('note:');
   if (wasRead && !isRead) leaveReadMode();
-  displayTitle.textContent = isJob ? 'Rocky Job' : PAGE_TITLES[page] || 'Now';
-  displayTitle.classList.toggle('rr-title', isRead);
+  displayTitle.textContent = isJob ? 'Rocky Job' : isNote ? 'Note' : PAGE_TITLES[page] || 'Now';
+  displayTitle.classList.toggle('rr-title', isRead || isNote);
   displayBack.hidden = page === 'now';
   for (const key of ['threads', 'projects', 'inbox', 'health']) {
     document.getElementById(`instr-${key}`).classList.toggle('active', page === key);
@@ -280,6 +281,7 @@ function showPage(page) {
   void displayBody.offsetWidth; // restart the finite page-swap animation
   displayBody.classList.add('page-in');
   if (isRead) enterReadMode(page.slice(5));
+  else if (isNote) renderNotePage(page.slice(5));
   else if (isJob) renderJobPage(page.slice(4));
   else if (page === 'day') renderDayPage();
   else if (page === 'threads') renderThreadsPage();
@@ -290,6 +292,128 @@ function showPage(page) {
 }
 
 displayBack.addEventListener('click', () => showPage('now'));
+
+// ======================= NOTE PAGE (rocky://open?file=…) =======================
+// One vault note on the center display, rendered with the Reading Room's
+// prose styles. Arrives from a terminal click (main → `note:open`), from a
+// [[wikilink]] inside another note, or from the mock query `?note=`. Nothing
+// here writes to the vault; "Obsidian" hands the same note over for editing.
+let noteToken = 0;
+let notePendingHeading = null; // heading to scroll to once the page is painted
+
+function openNote(rel, heading) {
+  notePendingHeading = heading || null;
+  showPage(`note:${rel}`);
+}
+
+function slugText(s) {
+  return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function scrollToHeading(root, heading) {
+  if (!heading) return;
+  const want = slugText(heading);
+  const hs = [...root.querySelectorAll('h1, h2, h3, h4, h5, h6')];
+  const hit =
+    hs.find((h) => slugText(h.textContent) === want) ||
+    hs.find((h) => slugText(h.textContent).includes(want));
+  if (!hit) return;
+  hit.classList.add('note-target');
+  // Offset for the sticky head: scroll the container, not the window.
+  const top = hit.offsetTop - 12;
+  displayBody.scrollTop = Math.max(0, top);
+}
+
+async function renderNotePage(rel) {
+  const token = ++noteToken;
+  const heading = notePendingHeading;
+  notePendingHeading = null;
+  const wrap = displayBody;
+  const soft = el('div', 'reader-soft', 'Opening…');
+  wrap.appendChild(soft);
+  let res;
+  try {
+    res = window.brain && typeof window.brain.readNote === 'function'
+      ? await window.brain.readNote(rel)
+      : { ok: false, error: 'note backend not loaded' };
+  } catch (e) {
+    res = { ok: false, error: errText(e) };
+  }
+  if (token !== noteToken || currentPage !== `note:${rel}`) return;
+  wrap.innerHTML = '';
+  if (!res || !res.ok) {
+    displayTitle.textContent = 'Note';
+    const miss = el('div', 'notepage-missing');
+    miss.appendChild(el('div', 'notepage-missing-title', `Couldn't open ${rel}`));
+    miss.appendChild(el('div', 'reader-soft', (res && res.error) || 'no response'));
+    wrap.appendChild(miss);
+    return;
+  }
+  displayTitle.textContent = res.title || rel;
+  displayTitle.title = res.rel;
+
+  const page = el('div', 'reader notepage');
+  const meta = el('div', 'notepage-meta');
+  meta.appendChild(el('span', 'notepage-path', res.rel));
+  const tags = Array.isArray(res.meta && res.meta.tags) ? res.meta.tags : typeof (res.meta && res.meta.tags) === 'string' ? [res.meta.tags] : [];
+  for (const t of tags.slice(0, 6)) meta.appendChild(el('span', 'notepage-tag', `#${String(t).replace(/^#/, '')}`));
+  if (res.meta && typeof res.meta.status === 'string') meta.appendChild(el('span', 'notepage-tag status', res.meta.status));
+  const obs = el('button', 'notepage-obsidian', 'Obsidian');
+  obs.title = 'Open this note in Obsidian to edit it';
+  obs.addEventListener('click', () => {
+    if (window.brain && typeof window.brain.openInObsidian === 'function') window.brain.openInObsidian(res.rel).catch(() => {});
+  });
+  meta.appendChild(obs);
+  page.appendChild(meta);
+
+  const md = el('div', 'turn-md notepage-md');
+  md.innerHTML = renderMarkdown(res.md || '');
+  for (const table of md.querySelectorAll('table')) {
+    const tw = el('div', 'tbl');
+    table.replaceWith(tw);
+    tw.appendChild(table);
+  }
+  page.appendChild(md);
+  wrap.appendChild(page);
+  scrollToHeading(md, heading);
+}
+
+// [[wikilinks]] anywhere on the display (note pages, and transcripts in the
+// Reading Room) navigate in-app. Unresolvable targets are marked, not opened.
+async function followWikilink(span) {
+  const target = span.dataset.wl;
+  if (!target) return;
+  let rel = null;
+  try {
+    if (window.brain && typeof window.brain.resolveNoteLink === 'function') rel = await window.brain.resolveNoteLink(target);
+  } catch {
+    rel = null;
+  }
+  if (!rel) {
+    span.classList.add('missing');
+    span.title = `No note named “${target}” in the vault`;
+    return;
+  }
+  openNote(rel, span.dataset.wlHeading || null);
+}
+displayBody.addEventListener('click', (e) => {
+  const span = e.target.closest && e.target.closest('.wl');
+  if (!span || !displayBody.contains(span)) return;
+  e.preventDefault();
+  followWikilink(span);
+});
+displayBody.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || !e.target.classList || !e.target.classList.contains('wl')) return;
+  e.preventDefault();
+  followWikilink(e.target);
+});
+
+if (window.brain && typeof window.brain.onNoteOpen === 'function') {
+  window.brain.onNoteOpen((payload) => {
+    if (payload && payload.file) openNote(payload.file, payload.heading || null);
+  });
+}
+
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || currentPage === 'now') return;
   // The reader owns Esc while in read mode: it closes the "Sor" pill, then the
