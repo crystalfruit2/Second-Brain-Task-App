@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
@@ -354,6 +354,24 @@ function handleDeepLink(raw) {
   if (!link) return false;
   if (!app.isReady()) {
     pendingDeepLink = raw;
+    return true;
+  }
+  if (link.kind === 'file') {
+    // Attachment (xlsx/pdf/png…): nothing to render in-app — open it with the
+    // OS default app, but only if it really lives inside the vault.
+    let abs;
+    try {
+      abs = assertInVault(path.join(VAULT_PATH, link.file));
+    } catch {
+      return true;
+    }
+    if (!fs.existsSync(abs)) {
+      dialog.showErrorBox('Rocky OS', `Vault'ta böyle bir dosya yok:\n${link.file}`);
+      return true;
+    }
+    shell.openPath(abs).then((err) => {
+      if (err) dialog.showErrorBox('Rocky OS', `Dosya açılamadı: ${err}`);
+    });
     return true;
   }
   createMissionWindow();

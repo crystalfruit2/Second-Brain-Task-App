@@ -5,7 +5,7 @@ const { parseRockyUrl, buildRockyUrl } = require('../src/deeplink');
 
 test('query form, no extension', () => {
   assert.deepEqual(parseRockyUrl('rocky://open?file=Areas/Idea-Garden'), {
-    action: 'open', file: 'Areas/Idea-Garden.md', heading: null,
+    action: 'open', kind: 'note', file: 'Areas/Idea-Garden.md', heading: null,
   });
 });
 
@@ -15,7 +15,7 @@ test('query form keeps an explicit .md and decodes %20', () => {
 
 test('obsidian-style %23 heading splits into heading', () => {
   assert.deepEqual(parseRockyUrl('rocky://open?file=Areas%2FIdea-Garden%23%F0%9F%8C%B0%20Seeds'), {
-    action: 'open', file: 'Areas/Idea-Garden.md', heading: '🌰 Seeds',
+    action: 'open', kind: 'note', file: 'Areas/Idea-Garden.md', heading: '🌰 Seeds',
   });
 });
 
@@ -29,7 +29,7 @@ test('path form', () => {
 
 test('turkish characters survive the round trip', () => {
   const url = buildRockyUrl('Resources/Staj/Staj Defteri — Ç.md', 'Özet');
-  assert.deepEqual(parseRockyUrl(url), { action: 'open', file: 'Resources/Staj/Staj Defteri — Ç.md', heading: 'Özet' });
+  assert.deepEqual(parseRockyUrl(url), { action: 'open', kind: 'note', file: 'Resources/Staj/Staj Defteri — Ç.md', heading: 'Özet' });
 });
 
 test('rejects other schemes, other actions, traversal, empty', () => {
@@ -44,4 +44,18 @@ test('rejects other schemes, other actions, traversal, empty', () => {
 
 test('buildRockyUrl strips .md and leading slash', () => {
   assert.equal(buildRockyUrl('/Areas/Idea-Garden.md'), 'rocky://open?file=Areas%2FIdea-Garden');
+});
+
+test('attachment extensions become kind file and keep their extension', () => {
+  const r = parseRockyUrl('rocky://open?file=Resources%2FErasmus%2Fattachments%2F2026-09-10-Recognition-Sheet-AlpEldam-v2.xlsx');
+  assert.deepEqual(r, {
+    action: 'open', kind: 'file',
+    file: 'Resources/Erasmus/attachments/2026-09-10-Recognition-Sheet-AlpEldam-v2.xlsx', heading: null,
+  });
+  assert.equal(parseRockyUrl('rocky://open?file=Resources/x.PDF&heading=ignored').heading, null);
+});
+
+test('notes stay kind note, even with a dot in the name', () => {
+  assert.equal(parseRockyUrl('rocky://open?file=Daily/2026-09-10').kind, 'note');
+  assert.equal(parseRockyUrl('rocky://open?file=Learning/Topics/v1.2').file, 'Learning/Topics/v1.2.md');
 });
