@@ -482,7 +482,7 @@ body.mac .fma { padding-left: 84px; }
 /* ---------- stat tiles ---------- */
 .instruments {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   border-top: 1px solid var(--sep);
   flex-shrink: 0;
 }
@@ -997,3 +997,30 @@ body.read-mode .rr-latest { display: flex; }
   0% { background: rgba(255, 159, 10, 0.28); box-shadow: 0 0 0 6px rgba(255, 159, 10, 0.28); }
   100% { background: transparent; box-shadow: 0 0 0 6px transparent; }
 }
+
+/* ---------- Finance page (read-only record; Faz 0 = data, never an order) ---------- */
+.fin-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; padding: 6px 8px 10px; }
+.fin-total { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fin-meta { font-size: 12px; color: var(--label-3); }
+.fin-sub { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--label-3); padding: 10px 8px 4px; }
+.fin-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.fin-table th { text-align: left; font-weight: 500; color: var(--label-3); padding: 4px 8px; border-bottom: 1px solid var(--sep); white-space: nowrap; }
+.fin-table td { padding: 5px 8px; border-bottom: 1px solid var(--sep); color: var(--label-2); white-space: nowrap; }
+.fin-table td:first-child { color: var(--label-3); }
+.fin-table tr:first-child td { color: var(--label-1); }
+.fin-scroll { overflow-x: auto; }
+.fin-rule { display: flex; gap: 10px; padding: 6px 8px; font-size: 12.5px; align-items: baseline; }
+.fin-rule + .fin-rule { border-top: 1px solid var(--sep); }
+.fin-rule-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--label-3); flex-shrink: 0; min-width: 150px; }
+.fin-rule-measure { color: var(--label-2); min-width: 0; word-break: break-word; }
+.fin-rule.fired .fin-rule-id { color: var(--yellow); }
+.fin-rule.fired .fin-rule-measure { color: var(--label-1); }
+.fin-cal { display: flex; gap: 10px; padding: 5px 8px; font-size: 12.5px; }
+.fin-cal-date { color: var(--label-3); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.fin-cal-days { color: var(--label-3); flex-shrink: 0; min-width: 52px; }
+.fin-brief { padding: 4px 8px 8px; font-size: 12.5px; line-height: 1.5; color: var(--label-2); }
+.fin-brief p { margin: 4px 0; }
+.fin-brief table { border-collapse: collapse; font-size: 11.5px; margin: 6px 0; }
+.fin-brief th, .fin-brief td { padding: 3px 6px; border-bottom: 1px solid var(--sep); white-space: nowrap; text-align: left; }
+.fin-brief strong { color: var(--label-1); }
+.fin-foot { font-size: 11px; color: var(--label-3); padding: 8px; font-style: italic; }

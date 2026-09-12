@@ -86,6 +86,7 @@ const state = {
   projects: [],
   inbox: null,
   health: null,
+  finance: null,
 };
 
 // ======================= FMA strip =======================
@@ -255,6 +256,7 @@ const PAGE_TITLES = {
   projects: 'Projects',
   inbox: 'Inbox',
   health: 'Health',
+  finance: 'Finance',
 };
 
 let currentPage = 'now';
@@ -272,7 +274,7 @@ function showPage(page) {
   displayTitle.textContent = isJob ? 'Rocky Job' : isNote ? 'Note' : PAGE_TITLES[page] || 'Now';
   displayTitle.classList.toggle('rr-title', isRead || isNote);
   displayBack.hidden = page === 'now';
-  for (const key of ['threads', 'projects', 'inbox', 'health']) {
+  for (const key of ['threads', 'projects', 'inbox', 'health', 'finance']) {
     document.getElementById(`instr-${key}`).classList.toggle('active', page === key);
   }
   displayBody.innerHTML = '';
@@ -288,6 +290,7 @@ function showPage(page) {
   else if (page === 'projects') renderProjectsPage();
   else if (page === 'inbox') renderInboxPage();
   else if (page === 'health') renderHealthPage();
+  else if (page === 'finance') renderFinancePage();
   else renderNowPage();
 }
 
@@ -638,6 +641,86 @@ function renderHealthPage() {
   }
 }
 
+// ---------- FINANCE page (read-only record; Faz 0 = data + record, never an order) ----------
+function renderFinancePage() {
+  const wrap = displayBody;
+  const f = state.finance;
+  if (!f || !f.available) {
+    setEmpty(wrap, 'No Areas/Finance.md yet — run /finance sync.');
+    return;
+  }
+  const head = el('div', 'fin-head');
+  const last = f.last || {};
+  head.appendChild(el('span', 'fin-total', last['Portföy TL'] ? `${last['Portföy TL']} TL` : '—'));
+  head.appendChild(el('span', 'fin-meta', last.Tarih ? `§Sicil ${last.Tarih}` : 'no sicil row'));
+  if (f.record) head.appendChild(el('span', 'fin-meta', plainText(f.record)));
+  wrap.appendChild(head);
+
+  // Rules — fired first
+  const rules = [...f.rules].sort((a, b) => (a.status === 'fired' ? -1 : b.status === 'fired' ? 1 : 0));
+  if (rules.length) {
+    wrap.appendChild(el('div', 'fin-sub', `Rules · ${rules.filter((r) => r.status === 'fired').length} fired`));
+    for (const r of rules) {
+      const row = el('div', `fin-rule ${r.status}`);
+      row.appendChild(el('span', 'fin-rule-id', `${r.status === 'fired' ? '● ' : r.status === 'info' ? '○ ' : '  '}${r.id}`));
+      row.appendChild(el('span', 'fin-rule-measure', r.measure + (r.task ? ' → task' : '')));
+      wrap.appendChild(row);
+    }
+  }
+
+  // Sicil table
+  if (f.sicil.rows.length) {
+    wrap.appendChild(el('div', 'fin-sub', `Sicil · ${f.sicil.total} weekly rows`));
+    const scroll = el('div', 'fin-scroll');
+    const table = document.createElement('table');
+    table.className = 'fin-table';
+    const thead = document.createElement('tr');
+    for (const c of f.sicil.columns.slice(0, -1)) thead.appendChild(el('th', null, c));
+    table.appendChild(thead);
+    for (const r of f.sicil.rows) {
+      const tr = document.createElement('tr');
+      tr.title = r.cells[r.cells.length - 1] || '';
+      for (const c of r.cells.slice(0, -1)) tr.appendChild(el('td', null, c));
+      table.appendChild(tr);
+    }
+    scroll.appendChild(table);
+    wrap.appendChild(scroll);
+  }
+
+  // Calls
+  if (f.calls.total) {
+    wrap.appendChild(el('div', 'fin-sub', `Calls · ${f.calls.open.length} open · ${f.calls.resolved} resolved${f.calls.brier != null ? ` · Brier ${f.calls.brier}` : ''}`));
+    for (const c of f.calls.open) {
+      const row = el('div', 'fin-cal');
+      row.appendChild(el('span', 'fin-cal-date', c.horizon ? c.horizon.split('-').reverse().join('.') : '—'));
+      row.appendChild(el('span', 'fin-cal-days', `${c.type} p=${c.probability ?? '—'}`));
+      row.appendChild(el('span', null, `${c.instrument}${c.decision ? ' — ' + c.decision : ''}`));
+      wrap.appendChild(row);
+    }
+  }
+
+  // Calendar
+  if (f.calendar.length) {
+    wrap.appendChild(el('div', 'fin-sub', 'Calendar'));
+    for (const c of f.calendar) {
+      const row = el('div', 'fin-cal');
+      row.appendChild(el('span', 'fin-cal-date', c.date));
+      row.appendChild(el('span', 'fin-cal-days', `${c.days >= 0 ? '+' : ''}${c.days} d`));
+      row.appendChild(el('span', null, c.what));
+      wrap.appendChild(row);
+    }
+  }
+
+  // Latest Sunday brief (markdown from the Daily note)
+  if (f.brief) {
+    wrap.appendChild(el('div', 'fin-sub', `Brief · ${f.brief.date}`));
+    const md = el('div', 'fin-brief');
+    md.innerHTML = renderMarkdown(f.brief.markdown.replace(/^## [^\n]*\n/, ''));
+    wrap.appendChild(md);
+  }
+  wrap.appendChild(el('div', 'fin-foot', 'Faz 0 — data and record only. Source: Areas/Finance.md · Areas/Finance/ · /finance'));
+}
+
 // ---------- JOB page (live log) ----------
 function renderJobPage(id) {
   const job = jobState.get(id);
@@ -669,6 +752,7 @@ document.getElementById('instr-threads').addEventListener('click', () => showPag
 document.getElementById('instr-projects').addEventListener('click', () => showPage(currentPage === 'projects' ? 'now' : 'projects'));
 document.getElementById('instr-inbox').addEventListener('click', () => showPage(currentPage === 'inbox' ? 'now' : 'inbox'));
 document.getElementById('instr-health').addEventListener('click', () => showPage(currentPage === 'health' ? 'now' : 'health'));
+document.getElementById('instr-finance').addEventListener('click', () => showPage(currentPage === 'finance' ? 'now' : 'finance'));
 
 function plainText(md) {
   return String(md || '')
@@ -837,6 +921,31 @@ async function loadInbox() {
   });
 }
 
+function paintFinanceInstrument() {
+  const value = document.getElementById('instr-finance-value');
+  const note = document.getElementById('instr-finance-note');
+  const f = state.finance;
+  if (!f || !f.available || !f.last) {
+    value.textContent = '—';
+    note.textContent = f && f.available ? 'no sicil row' : 'no data';
+    return;
+  }
+  const total = (f.last['Portföy TL'] || '').replace(/\.(\d{3})$/, 'k').replace(/\.\d{3}k$/, (m) => m.slice(0, 1) + 'k');
+  value.textContent = total ? `${f.last['Portföy TL'].replace(/\.(\d{3})$/, ',$1').split(',')[0]}k ₺` : '—';
+  const fired = f.rules.filter((r) => r.status === 'fired').length;
+  note.textContent = fired ? `${fired} rule${fired > 1 ? 's' : ''} fired` : (f.brief ? `brief ${f.brief.date.slice(5).split('-').reverse().join('.')}` : 'no brief yet');
+  note.classList.toggle('caution', fired > 0);
+  value.classList.toggle('caution', fired > 0);
+}
+
+async function loadFinance() {
+  await safely(null, 'finance', async () => {
+    state.finance = await window.brain.finance();
+    paintFinanceInstrument();
+    repaintIfCurrent('finance');
+  });
+}
+
 async function loadHealth() {
   await safely(null, 'health', async () => {
     state.health = await window.brain.health();
@@ -904,6 +1013,7 @@ function scheduleVaultReload() {
     loadInbox();
     loadThreads();
     loadHealth();
+    loadFinance();
     loadAnnunciators();
   }, 1200);
 }
@@ -2001,6 +2111,7 @@ function refreshAll() {
   loadProjects();
   loadInbox();
   loadHealth();
+  loadFinance();
   loadSessions();
 }
 

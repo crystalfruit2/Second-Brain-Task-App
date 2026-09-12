@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('brain', {
   health: () => ipcRenderer.invoke('mc:health'),
   reviewsDue: () => ipcRenderer.invoke('mc:reviewsDue'),
   agenda: () => ipcRenderer.invoke('mc:agenda'),
+  finance: () => ipcRenderer.invoke('mc:finance'),
 
   // ---- Mission Control: Rocky jobs ----
   dispatchJob: (prompt, label) => ipcRenderer.invoke('rocky:dispatch', { prompt, label }),
