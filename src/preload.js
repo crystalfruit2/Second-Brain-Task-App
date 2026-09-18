@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('brain', {
   reviewsDue: () => ipcRenderer.invoke('mc:reviewsDue'),
   agenda: () => ipcRenderer.invoke('mc:agenda'),
   finance: () => ipcRenderer.invoke('mc:finance'),
+  garden: () => ipcRenderer.invoke('mc:garden'),
 
   // ---- Mission Control: Rocky jobs ----
   dispatchJob: (prompt, label) => ipcRenderer.invoke('rocky:dispatch', { prompt, label }),

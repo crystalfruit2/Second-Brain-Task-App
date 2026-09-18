@@ -87,6 +87,8 @@ const state = {
   inbox: null,
   health: null,
   finance: null,
+  garden: null,
+  gardenView: 'garden', // 'garden' | 'list'
 };
 
 // ======================= FMA strip =======================
@@ -253,7 +255,7 @@ const PAGE_TITLES = {
   now: 'Now',
   day: 'Day',
   threads: 'Life Threads',
-  projects: 'Projects',
+  projects: 'Garden',
   inbox: 'Inbox',
   health: 'Health',
   finance: 'Finance',
@@ -470,6 +472,8 @@ function renderNowPage() {
     wrap.appendChild(el('div', 'now-rest', 'Start Day builds today’s note and its task list.'));
   }
 
+  renderGardenAlert(wrap);
+
   const events = upcomingEvents(3);
   if (events.length) {
     const block = el('div', 'now-wpt-block');
@@ -577,8 +581,186 @@ function renderThreadsPage() {
   if (rest) wrap.appendChild(el('div', 'empty', `+${rest} simmering / dormant threads live in the vault note.`));
 }
 
+// ---------- GARDEN (projects as plants; idle = wilt, deadline = fruit) ----------
+// Static SVG, redrawn only when data changes — no idle motion (battery rule).
+const PLANT = {
+  // stem path + [x, y, angleL, angleR, scale] leaf pairs per wilt stage
+  0: { stem: 'M48 80 L48 24', leaves: [[48, 66, -150, -30, 1], [48, 50, -150, -30, 1.05], [48, 36, -145, -35, 0.85]] },
+  1: { stem: 'M48 80 L48 26', leaves: [[48, 66, -168, -12, 1], [48, 51, -166, -14, 1], [48, 38, -160, -20, 0.8]] },
+  2: { stem: 'M48 80 C48 62 45 50 39 34', leaves: [[47, 65, -186, 6, 0.95], [44, 49, -184, 8, 0.85]] },
+  3: { stem: 'M48 80 C48 64 42 52 30 42', leaves: [[47, 66, -212, 32, 0.85], [40, 52, -210, 34, 0.7]], fallen: true },
+};
+const LEAF = 'M0 0C7-9 20-9 25 0C20 8 7 8 0 0Z';
+
+function fruitColor(daysLeft) {
+  if (daysLeft == null) return null;
+  if (daysLeft <= 3) return 'var(--red)';
+  if (daysLeft <= 7) return 'var(--tint)';
+  if (daysLeft <= 14) return 'var(--yellow)';
+  return 'var(--label-3)';
+}
+
+function plantSvg(stage, daysLeft, size) {
+  const cfg = PLANT[Math.max(0, Math.min(3, stage))] || PLANT[0];
+  const w = size || 96;
+  const h = Math.round(w * 110 / 96);
+  const leaves = cfg.leaves
+    .map(([x, y, aL, aR, sc]) =>
+      `<path d="${LEAF}" transform="translate(${x} ${y}) rotate(${aL}) scale(${sc})"/>` +
+      `<path d="${LEAF}" transform="translate(${x} ${y}) rotate(${aR}) scale(${sc})"/>`)
+    .join('');
+  const fallen = cfg.fallen ? `<path d="${LEAF}" transform="translate(58 84) rotate(14) scale(0.6)" opacity="0.6"/>` : '';
+  const tip = /L48 2[46]$/.test(cfg.stem) ? [48, 24] : stage === 2 ? [39, 34] : [30, 42];
+  const fc = fruitColor(daysLeft);
+  const fruit = fc
+    ? `<circle class="fruit" cx="${tip[0]}" cy="${tip[1] - 2}" r="${daysLeft <= 7 ? 6.5 : 5}" fill="${fc}"/>`
+    : '';
+  return (
+    `<svg class="plant s${stage}" width="${w}" height="${h}" viewBox="0 0 96 110" aria-hidden="true">` +
+    `<path class="pot" d="M26 80h44l-4 26H30z"/><rect class="rim" x="22" y="76" width="52" height="7" rx="2"/>` +
+    `<ellipse class="soil" cx="48" cy="80" rx="22" ry="3.5"/>` +
+    `<path class="stem" d="${cfg.stem}"/>` +
+    `<g class="leaves">${leaves}${fallen}</g>${fruit}</svg>`
+  );
+}
+
+function idleText(p) {
+  if (p.idleDays == null) return 'never touched';
+  if (p.idleDays === 0) return 'touched today';
+  if (p.idleDays === 1) return 'yesterday';
+  return `${p.idleDays} days untouched`;
+}
+
+function deadlineText(p) {
+  if (p.daysLeft == null) return '';
+  if (p.daysLeft < 0) return `${-p.daysLeft}d overdue`;
+  if (p.daysLeft === 0) return 'due today';
+  return `${p.daysLeft}d left`;
+}
+
+function gardenNags() {
+  const g = state.garden;
+  return g && g.available ? g.projects.filter((p) => p.nag) : [];
+}
+
+function openProjectNote(p) {
+  if (p && p.file) showPage(`note:${p.file}`);
+}
+
+function renderGardenAlert(wrap) {
+  const nags = gardenNags().slice(0, 3);
+  if (!nags.length) return;
+  const block = el('div', 'now-garden');
+  const label = el('div', 'now-label garden');
+  label.textContent = 'Wilting';
+  block.appendChild(label);
+  for (const p of nags) {
+    const row = el('div', 'now-garden-row');
+    row.innerHTML = plantSvg(p.stage, p.daysLeft, 26);
+    const t = el('span', 'now-garden-text');
+    const dl = deadlineText(p);
+    t.innerHTML = `<b>${escapeHtml(p.name)}</b> · ${idleText(p)}` +
+      (dl ? ` · <span class="garden-dl">${escapeHtml(dl)}${p.deadlineLabel ? ' — ' + escapeHtml(p.deadlineLabel) : ''}</span>` : '');
+    row.appendChild(t);
+    row.title = 'Open the garden';
+    row.addEventListener('click', () => showPage('projects'));
+    block.appendChild(row);
+  }
+  wrap.appendChild(block);
+}
+
 function renderProjectsPage() {
   const wrap = displayBody;
+  const g = state.garden;
+  const head = el('div', 'garden-head');
+  const toggle = el('button', 'garden-toggle', state.gardenView === 'garden' ? 'List' : 'Garden');
+  toggle.addEventListener('click', () => {
+    state.gardenView = state.gardenView === 'garden' ? 'list' : 'garden';
+    showPage('projects');
+  });
+  if (state.gardenView === 'list' || !g || !g.available) {
+    head.appendChild(el('span', 'page-sub tight', 'Registry'));
+    if (g && g.available) head.appendChild(toggle);
+    wrap.appendChild(head);
+    renderProjectsList(wrap);
+    return;
+  }
+  const focus = g.projects.filter((p) => p.lane === 'focus');
+  const background = g.projects.filter((p) => p.lane === 'background');
+  const parked = g.projects.filter((p) => p.lane === 'parked');
+
+  head.appendChild(el('span', 'page-sub tight', `Focus · ${focus.length}`));
+  head.appendChild(toggle);
+  wrap.appendChild(head);
+
+  if (!focus.length) {
+    wrap.appendChild(el('div', 'empty', 'No project carries `lane: focus` yet — set it in the note’s frontmatter.'));
+  } else {
+    const grid = el('div', 'garden-grid');
+    for (const p of focus) {
+      const card = el('div', 'plant-card' + (p.nag ? ' nag' : ''));
+      card.innerHTML = plantSvg(p.stage, p.daysLeft, 96);
+      card.appendChild(el('div', 'plant-name', p.name));
+      const meta = el('div', 'plant-meta' + (p.nag ? ' caution' : ''), idleText(p));
+      card.appendChild(meta);
+      const dl = deadlineText(p);
+      if (dl) {
+        const chip = el('div', 'plant-dl', dl);
+        chip.style.color = fruitColor(p.daysLeft);
+        chip.title = `${p.deadline}${p.deadlineLabel ? ' · ' + p.deadlineLabel : ''}`;
+        card.appendChild(chip);
+      }
+      card.title = `${p.file}\nlast touch via ${p.via || '—'}${p.repo ? '\n' + p.repo : ''}`;
+      card.addEventListener('click', () => openProjectNote(p));
+      grid.appendChild(card);
+    }
+    wrap.appendChild(grid);
+  }
+
+  if (background.length) {
+    wrap.appendChild(el('div', 'page-sub', `Background · ${background.length}`));
+    const strip = el('div', 'sprout-strip');
+    for (const p of background) {
+      const s = el('div', 'sprout' + (p.nag ? ' nag' : ''));
+      s.innerHTML = plantSvg(p.stage, p.daysLeft, 40);
+      const t = el('div', 'sprout-text');
+      t.appendChild(el('div', 'sprout-name', p.name));
+      t.appendChild(el('div', 'sprout-meta' + (p.nag ? ' caution' : ''), idleText(p) + (p.daysLeft != null ? ` · ${deadlineText(p)}` : '')));
+      s.appendChild(t);
+      s.addEventListener('click', () => openProjectNote(p));
+      strip.appendChild(s);
+    }
+    wrap.appendChild(strip);
+  }
+
+  if (parked.length) {
+    wrap.appendChild(el('div', 'page-sub', `Parked · ${parked.length}`));
+    const line = el('div', 'parked-line');
+    parked.forEach((p, i) => {
+      const a = el('span', 'parked-name', p.name);
+      a.title = idleText(p);
+      a.addEventListener('click', () => openProjectNote(p));
+      line.appendChild(a);
+      if (i < parked.length - 1) line.appendChild(document.createTextNode(' · '));
+    });
+    wrap.appendChild(line);
+  }
+
+  if (g.seeds && g.seeds.total) {
+    wrap.appendChild(el('div', 'page-sub', `Seeds · ${g.seeds.total}`));
+    const tray = el('div', 'seed-tray');
+    for (const sd of g.seeds.items.slice(0, 8)) {
+      const chip = el('span', 'seed', sd.title.length > 44 ? sd.title.slice(0, 43).trimEnd() + '…' : sd.title);
+      chip.title = sd.date ? `planted ${sd.date}` : 'seed';
+      chip.addEventListener('click', () => showPage('note:Areas/Idea-Garden.md'));
+      tray.appendChild(chip);
+    }
+    if (g.seeds.total > 8) tray.appendChild(el('span', 'seed more', `+${g.seeds.total - 8} more`));
+    wrap.appendChild(tray);
+  }
+}
+
+function renderProjectsList(wrap) {
   if (!state.projects.length) {
     setEmpty(wrap, 'No project registry found.');
     return;
@@ -769,9 +951,30 @@ function paintThreadsInstrument() {
 }
 
 function paintProjectsInstrument() {
-  document.getElementById('instr-projects-value').textContent = state.projects.length || '—';
-  const withGraph = state.projects.filter((p) => /✅/.test(p.graph || '')).length;
-  document.getElementById('instr-projects-note').textContent = withGraph ? `${withGraph} graphed` : '';
+  const value = document.getElementById('instr-projects-value');
+  const note = document.getElementById('instr-projects-note');
+  const g = state.garden;
+  if (!g || !g.available) {
+    value.textContent = state.projects.length || '—';
+    note.textContent = '';
+    value.classList.remove('caution');
+    note.classList.remove('caution');
+    return;
+  }
+  const nags = gardenNags();
+  const focus = g.projects.filter((p) => p.lane === 'focus').length;
+  if (nags.length) {
+    const p = nags[0];
+    const short = p.name.split(/\s/)[0];
+    value.textContent = short.length > 9 ? short.slice(0, 8) + '…' : short;
+    const dl = p.daysLeft != null ? ` · ${deadlineText(p)}` : '';
+    note.textContent = `${p.idleDays ?? '?'}d idle${dl}${nags.length > 1 ? ` · +${nags.length - 1}` : ''}`;
+  } else {
+    value.textContent = String(focus || g.projects.length || '—');
+    note.textContent = focus ? 'garden tended' : 'no focus lane';
+  }
+  value.classList.toggle('caution', nags.length > 0);
+  note.classList.toggle('caution', nags.length > 0);
 }
 
 function paintInboxInstrument() {
@@ -909,7 +1112,23 @@ async function loadProjects() {
   await safely(null, 'projects', async () => {
     state.projects = await window.brain.projectsBrief();
     paintProjectsInstrument();
+    if (state.gardenView === 'list' || !(state.garden && state.garden.available)) repaintIfCurrent('projects');
+  });
+}
+
+let lastNagKey = '';
+async function loadGarden() {
+  await safely(null, 'garden', async () => {
+    state.garden = await window.brain.garden();
+    paintProjectsInstrument();
     repaintIfCurrent('projects');
+    // The NOW page only carries the Wilting rows; repaint it just when those
+    // change, so a focus/refresh does not scroll-reset and re-animate it.
+    const key = gardenNags().map((p) => `${p.dir}:${p.idleDays}:${p.daysLeft}`).join('|');
+    if (key !== lastNagKey) {
+      lastNagKey = key;
+      repaintIfCurrent('now');
+    }
   });
 }
 
@@ -2109,6 +2328,7 @@ function refreshAll() {
   loadAgenda();
   loadThreads();
   loadProjects();
+  loadGarden();
   loadInbox();
   loadHealth();
   loadFinance();
@@ -2120,6 +2340,7 @@ document.getElementById('refresh').addEventListener('click', refreshAll);
 window.addEventListener('focus', () => {
   renderClock();
   loadToday();
+  loadGarden();
   loadInbox();
   loadAnnunciators();
 });

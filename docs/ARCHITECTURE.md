@@ -789,3 +789,49 @@ cached 60 s, shortest path wins like Obsidian) and navigate in-app. A deep
 link with a heading scrolls to it and flashes it lantern-orange. Nothing on
 this page writes to the vault. Dev check: `ROCKY_OPEN_URL=<url> MC_CAPTURE=<dir>
 npx electron .` opens the link and screenshots it.
+
+## Garden — projects that wilt (2026-09-18)
+
+**Why.** The Projects page was a flat copy of the registry table: 22 rows, 17 saying "active", no
+notion of time. Bosum sat untouched for three days with a code freeze twelve days out and the board
+looked exactly the same as the day it was last worked on. Rocky's job is to notice that; the list
+could not.
+
+**Data — `src/garden.js` (reads, never writes).** One row per `Projects/<dir>/` whose main note is
+not `completed`/`superseded`. Per project it takes the newest of three independent "last touch"
+signals — the newest `.md` mtime under the folder, the last Daily note with *evidence* naming the
+project, and the last ref update of its local repo (path from frontmatter `repo:`/`path:` or the
+registry's *Local path* column only; read from the tail of `.git/logs/HEAD` as a plain file, so no
+git process, nothing cached across calls, nothing to block the main thread) — and computes idle
+days in the machine's local calendar day. Daily
+evidence is deliberately narrow: `- [x]` lines anywhere plus lines under Journal / Notes & Links /
+Pomodoro Log / End of Day. Open tasks, intentions, the schedule and headings do not count, because a
+carried `- [ ]` names a project every day without anyone touching it (that alone made Bosum look
+fresh in the first cut). Lines that talk *about* neglect (dokunulmadı / untouched / wilting…) are
+skipped too, otherwise Rocky's own "Bosum 3 gündür dokunulmadı" in an End of Day summary would
+reset Bosum. Aliases match on word boundaries and an alias that is a word-prefix of another
+project's ("second brain" vs "second brain capture") is dropped. Lane and deadline come from frontmatter: `lane: focus|background|parked`
+(default background), `deadline: YYYY-MM-DD`, `deadline-label:`. Rules (mirrored in the vault's
+`.claude/skills/start-day/neglect.py`, keep both in step): focus wilt stages 0 ≤1d · 1 = 2–3 · 2 = 4–7
+· 3 ≥8; background thresholds doubled; parked never nags; nag = focus stage ≥1, or any non-parked
+project with ≤7 days left and ≥2 idle; score = idle × lane weight + max(0, 14 − daysLeft). Seeds are
+parsed from `Areas/Idea-Garden.md`'s `## 🌰 Seeds` section. IPC `mc:garden` → `window.brain.garden()`.
+
+**Board.** The Projects instrument became the Garden instrument: value = the worst nagging project
+(or the focus count when everything is tended), note = `3d idle · 12d left`, both in caution yellow
+when anything nags. The page is a grid of focus projects as potted plants — static inline SVG, one
+of four leaf poses per stage (upright green → drooping → bent yellow → brown with a fallen leaf); a
+deadline is a fruit at the stem tip, grey beyond 14 days, yellow ≤14, lantern ≤7, red ≤3. Background
+projects are a strip of small sprouts, parked ones a single dim line, seeds a row of chips that open
+the Idea Garden note. Click a plant → its note page. A "List" toggle brings the old registry list
+back. The NOW page gains a **Wilting** block (max 3 rows) above the schedule whenever a nag exists,
+so the neglect is visible without clicking anything. Loads with `refreshAll` and on window focus;
+no timers, no animation (battery rule).
+
+**Vault side.** `.claude/hooks/neglect-context.sh` injects the nag lines once per session, and
+`/start-day` step 8 prints them at the top of the recap. `lane:`/`deadline:` were set on all 19 open
+project notes with mtimes preserved (`os.utime`) so the change itself did not make everything look
+touched today. Tests: `test/garden.test.js` (synthetic vault in a temp dir, incl. a fake reflog, the registry
+column trap, an unreadable note, dd.MM.yyyy deadlines and alias boundaries). Adversarial review
+2026-09-18: 12 findings, all applied — the big three were the commit signal cached for the life of
+the process, the repo path scraped from the Status column, and UTC day arithmetic.

@@ -1024,3 +1024,62 @@ body.read-mode .rr-latest { display: flex; }
 .fin-brief th, .fin-brief td { padding: 3px 6px; border-bottom: 1px solid var(--sep); white-space: nowrap; text-align: left; }
 .fin-brief strong { color: var(--label-1); }
 .fin-foot { font-size: 11px; color: var(--label-3); padding: 8px; font-style: italic; }
+
+/* ---------- Garden (Projects page): plants wilt with idle days, fruit = deadline ---------- */
+.garden-head { display: flex; align-items: center; justify-content: space-between; padding-right: 8px; }
+.page-sub.tight { padding-top: 6px; }
+.garden-toggle {
+  font: 500 12px var(--sans); color: var(--blue); background: var(--fill); border: 0; border-radius: 999px;
+  padding: 4px 11px; cursor: pointer;
+}
+.garden-toggle:hover { background: var(--card-2); }
+.garden-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 4px 8px 6px; }
+.plant-card {
+  background: var(--card); border-radius: 14px; padding: 14px 12px 12px; text-align: center; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.plant-card:hover { background: var(--card-2); }
+.plant-card.nag { box-shadow: inset 0 0 0 1px rgba(255, 214, 10, 0.35); }
+.plant-name { font-size: 13px; font-weight: 600; margin-top: 6px; line-height: 1.25; }
+.plant-meta { font-size: 12px; color: var(--label-2); }
+.plant-meta.caution, .sprout-meta.caution { color: var(--yellow); }
+.plant-dl { font-size: 11.5px; font-weight: 600; font-family: var(--mono); letter-spacing: 0.02em; }
+
+.plant .pot { fill: var(--card-2); }
+.plant .rim { fill: rgba(120, 120, 128, 0.45); }
+.plant .soil { fill: #3a2a1c; }
+.plant .stem { fill: none; stroke: var(--leaf, var(--green)); stroke-width: 3; stroke-linecap: round; }
+.plant .leaves { fill: var(--leaf, var(--green)); }
+.plant.s0 { --leaf: #30d158; }
+.plant.s1 { --leaf: #7fc95a; }
+.plant.s2 { --leaf: #b9a63a; }
+.plant.s3 { --leaf: #8a6a3c; }
+.plant.s3 .stem { stroke: #7a5a34; }
+.plant-card:hover .plant, .sprout:hover .plant { filter: brightness(1.08); }
+
+.sprout-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 10px; padding: 0 8px; }
+.sprout { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 10px; cursor: pointer; min-width: 0; }
+.sprout:hover { background: var(--card); }
+.sprout-text { min-width: 0; }
+.sprout-name { font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sprout-meta { font-size: 11px; color: var(--label-3); white-space: nowrap; }
+.parked-line { font-size: 12px; color: var(--label-3); padding: 0 8px 4px; line-height: 1.7; }
+.parked-name { cursor: pointer; }
+.parked-name:hover { color: var(--label-2); }
+.seed-tray { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 8px 12px; }
+.seed {
+  font-size: 12px; color: var(--label-2); background: var(--card); border-radius: 999px; padding: 4px 10px;
+  cursor: pointer; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.seed::before { content: '🌰 '; }
+.seed.more::before { content: ''; }
+.seed:hover { background: var(--card-2); color: var(--label); }
+
+/* Wilting block on the NOW page — caution voice, one row per neglected focus project. */
+.now-garden { margin: 0 0 22px; }
+.now-label.garden { color: var(--yellow); }
+.now-garden-row { display: flex; align-items: center; gap: 9px; padding: 5px 0; cursor: pointer; font-size: 13px; color: var(--label-2); }
+.now-garden-row:hover { color: var(--label); }
+.now-garden-row .plant { flex: none; }
+.now-garden-text b { color: var(--label); font-weight: 600; }
+.garden-dl { color: var(--yellow); }

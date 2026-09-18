@@ -7,6 +7,7 @@ const sessions = require('./sessions');
 const rocky = require('./rocky');
 const reader = require('./reader');
 const finance = require('./finance');
+const garden = require('./garden');
 const { VAULT_PATH } = require('./config');
 const { parseRockyUrl } = require('./deeplink');
 
@@ -326,6 +327,8 @@ function createMissionWindow() {
       await shoot(1280, 800, 'page-threads.png');
       await js(`document.getElementById('instr-finance').click();`);
       await shoot(1280, 800, 'page-finance.png');
+      await js(`document.getElementById('instr-projects').click();`);
+      await shoot(1280, 800, 'page-garden.png');
       await shoot(1280, 800, 'page-threads.png');
       app.quit();
     });
@@ -540,6 +543,7 @@ ipcMain.handle('mc:health', () => vault.readHealth());
 ipcMain.handle('mc:reviewsDue', () => vault.reviewsDue());
 ipcMain.handle('mc:agenda', () => vault.readAgenda());
 ipcMain.handle('mc:finance', () => finance.readFinance(VAULT_PATH));
+ipcMain.handle('mc:garden', () => garden.readGarden(VAULT_PATH));
 
 // ---- IPC: note page (deep-linked vault notes) ----
 ipcMain.handle('note:read', (_e, rel) => vault.readNote(rel));
