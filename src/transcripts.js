@@ -113,7 +113,7 @@ function peekTitle(file) {
 // Reducer: JSONL lines → turns
 //
 // Turn shape (the contract with the renderer):
-//   { uuid, role: 'user'|'assistant'|'tools'|'error', ts, md, tools, queued? }
+//   { uuid, role: 'user'|'assistant'|'tools'|'error', ts, md, tools, queued?, retracted? }
 // Assistant records arrive one per content block (thinking / text / tool_use
 // each on its own line) sharing message.id, so a turn is usually *updated*
 // several times before it's complete. The renderer upserts by uuid.
@@ -147,6 +147,9 @@ function cleanUserText(s) {
   // Harness-injected turns (background task notifications, hook output) are
   // stored as user records too, but Alp never typed them.
   if (lead.startsWith('<task-notification>') || lead.startsWith('[SYSTEM NOTIFICATION')) return '';
+  // Subagent / other-session messages ride the same prompt queue (enqueue →
+  // remove:absorbed_mid_turn) and land as meta records — never typed by Alp.
+  if (lead.startsWith('<agent-message') || lead.startsWith('<cross-session-message')) return '';
   t = t.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '');
   t = t.replace(/<task-notification>[\s\S]*?<\/task-notification>/g, '');
   return t.trim();
@@ -299,6 +302,27 @@ function createReducer() {
       // (attachments can change it) — flag it so onUser can claim it.
       const g = ghosts.find((x) => !x.expecting);
       if (g) g.expecting = true;
+    } else if (rec.operation === 'remove') {
+      // Delivered into the running turn (reason absorbed_mid_turn /
+      // delivered_to_agent): Claude saw it, and no standalone user record
+      // follows — settle the ghost in place, or it reads "queued" forever.
+      const text = cleanUserText(rec.content);
+      const gi = text ? ghosts.findIndex((g) => g.md.trim() === text.trim()) : -1;
+      if (gi >= 0) {
+        const g = ghosts.splice(gi, 1)[0];
+        delete g.queued;
+        delete g.expecting;
+        touch(g);
+      }
+    } else if (rec.operation === 'popAll') {
+      // Alp pulled the queue back into the input box: never sent. Turns are
+      // upserted by uuid (append-only), so retract instead of splicing.
+      for (const g of ghosts.splice(0)) {
+        delete g.queued;
+        delete g.expecting;
+        g.retracted = true;
+        touch(g);
+      }
     }
   }
 

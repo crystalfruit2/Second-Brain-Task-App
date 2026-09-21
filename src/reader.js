@@ -306,7 +306,7 @@ function previousPrompt(index) {
   if (!current) return '';
   const turns = current.reducer.turns;
   for (let i = index - 1; i >= 0; i--) {
-    if (turns[i].role === 'user' && !turns[i].queued) return turns[i].md;
+    if (turns[i].role === 'user' && !turns[i].queued && !turns[i].retracted) return turns[i].md;
   }
   return '';
 }

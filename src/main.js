@@ -329,7 +329,18 @@ function createMissionWindow() {
       await shoot(1280, 800, 'page-finance.png');
       await js(`document.getElementById('instr-projects').click();`);
       await shoot(1280, 800, 'page-garden.png');
-      await shoot(1280, 800, 'page-threads.png');
+      await js(`document.getElementById('fma-count-cell').click();`);
+      await shoot(1280, 800, 'page-countdown.png');
+      await shoot(900, 560, 'page-countdown-900.png');
+      missionWin.setSize(1280, 800);
+      await js(`(() => { const b = document.querySelector('#rail-sessions .sess-act'); if (b) b.click(); })();`);
+      await shoot(1280, 800, 'page-terminal.png');
+      if (process.env.MC_CAPTURE_PIN) {
+        // Pin round-trip; the caller passes the slug to restore afterwards.
+        await js(`[...document.querySelectorAll('.sesspage-actions .modekey')].find((b) => /Pin/.test(b.textContent)).click();`);
+        await shoot(1280, 800, 'page-terminal-pinned.png');
+        await js(`window.brain.setActiveSession(${JSON.stringify(process.env.MC_CAPTURE_PIN)}, 'Second Brain');`);
+      }
       app.quit();
     });
   }
@@ -544,6 +555,7 @@ ipcMain.handle('mc:reviewsDue', () => vault.reviewsDue());
 ipcMain.handle('mc:agenda', () => vault.readAgenda());
 ipcMain.handle('mc:finance', () => finance.readFinance(VAULT_PATH));
 ipcMain.handle('mc:garden', () => garden.readGarden(VAULT_PATH));
+ipcMain.handle('mc:countdown', () => vault.readCountdown());
 
 // ---- IPC: note page (deep-linked vault notes) ----
 ipcMain.handle('note:read', (_e, rel) => vault.readNote(rel));

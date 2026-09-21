@@ -60,6 +60,8 @@ function fmtDuration(ms) {
 
 // One icon system, one stroke weight — drawn, not typed.
 const ICONS = {
+  notes:
+    '<svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="1.5" width="9" height="11" rx="1.6"/><path d="M4.8 4.8h4.4M4.8 7h4.4M4.8 9.2h2.6"/></svg>',
   refresh:
     '<svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12.3 7a5.3 5.3 0 1 1-1.6-3.8"/><path d="M12.5 1.5v2.7h-2.7"/></svg>',
   back:
@@ -89,6 +91,7 @@ const state = {
   finance: null,
   garden: null,
   gardenView: 'garden', // 'garden' | 'list'
+  countdown: null, // { connected, days, events:[{date,time,title}] }
 };
 
 // ======================= FMA strip =======================
@@ -105,6 +108,7 @@ function flash(node) {
 
 function renderClock() {
   const now = new Date();
+  if (state.countdown) paintCountdownCell();
   document.getElementById('fma-date').textContent = now
     .toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   document.getElementById('fma-time').textContent = now.toLocaleTimeString(undefined, {
@@ -259,6 +263,7 @@ const PAGE_TITLES = {
   inbox: 'Inbox',
   health: 'Health',
   finance: 'Finance',
+  countdown: 'Countdown',
 };
 
 let currentPage = 'now';
@@ -272,8 +277,10 @@ function showPage(page) {
   const isJob = page.startsWith('job:');
   const isRead = page.startsWith('read:');
   const isNote = page.startsWith('note:');
+  const isSess = page.startsWith('sess:');
   if (wasRead && !isRead) leaveReadMode();
-  displayTitle.textContent = isJob ? 'Rocky Job' : isNote ? 'Note' : PAGE_TITLES[page] || 'Now';
+  flushSessionNotes();
+  displayTitle.textContent = isJob ? 'Rocky Job' : isNote ? 'Note' : isSess ? 'Terminal' : PAGE_TITLES[page] || 'Now';
   displayTitle.classList.toggle('rr-title', isRead || isNote);
   displayBack.hidden = page === 'now';
   for (const key of ['threads', 'projects', 'inbox', 'health', 'finance']) {
@@ -286,6 +293,8 @@ function showPage(page) {
   displayBody.classList.add('page-in');
   if (isRead) enterReadMode(page.slice(5));
   else if (isNote) renderNotePage(page.slice(5));
+  else if (isSess) renderSessionPage(page.slice(5));
+  else if (page === 'countdown') renderCountdownPage();
   else if (isJob) renderJobPage(page.slice(4));
   else if (page === 'day') renderDayPage();
   else if (page === 'threads') renderThreadsPage();
@@ -425,6 +434,7 @@ document.addEventListener('keydown', (e) => {
   // frozen selection — never the page. Leaving read mode is the back button.
   if (currentPage.startsWith('read:')) return readerEscape();
   if (document.activeElement === cmdInput && cmdInput.value) return;
+  if (document.activeElement && document.activeElement.classList.contains('sesspage-notes')) return document.activeElement.blur();
   showPage('now');
 });
 
@@ -1121,6 +1131,8 @@ async function loadGarden() {
   await safely(null, 'garden', async () => {
     state.garden = await window.brain.garden();
     paintProjectsInstrument();
+    paintCountdownCell();
+    if (currentPage === 'countdown') showPage('countdown');
     repaintIfCurrent('projects');
     // The NOW page only carries the Wilting rows; repaint it just when those
     // change, so a focus/refresh does not scroll-reset and re-animate it.
@@ -1172,6 +1184,166 @@ async function loadHealth() {
     repaintIfCurrent('health');
   });
 }
+
+// ======================= COUNTDOWN (30-day horizon) =======================
+// Calendar events from gcal.py's 30-day cache + Garden's project deadlines,
+// grouped by day with a days-left count. Real calendar dates (appointments),
+// not the vault day. The header pill names one anchor: the next ✈ event, else
+// the next project deadline, else the next event — the "N days to X" number.
+const CD_MINOR = /doğum günü|birthday|arifesi/i; // all-day noise: shown, dimmed
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function calendarDaysUntil(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((new Date(y, m - 1, d) - today) / 86_400_000);
+}
+
+function stripLeadEmoji(s) {
+  return String(s || '').replace(/^[\p{Extended_Pictographic}️‍\s]+/u, '');
+}
+
+function countdownItems() {
+  const out = [];
+  const now = new Date();
+  const hhmm = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+  const cd = state.countdown;
+  if (cd && cd.connected) {
+    for (const e of cd.events) {
+      const days = calendarDaysUntil(e.date);
+      if (days < 0 || (days === 0 && e.time && e.time < hhmm)) continue; // already behind us
+      out.push({ ...e, days, kind: !e.time && CD_MINOR.test(e.title) ? 'minor' : 'event' });
+    }
+  }
+  const horizon = (cd && cd.days) || 30;
+  for (const p of (state.garden && state.garden.projects) || []) {
+    if (!p.deadline) continue;
+    const days = calendarDaysUntil(p.deadline);
+    if (days < 0 || days > horizon) continue;
+    out.push({ date: p.deadline, time: '', title: `${p.name}${p.deadlineLabel ? ` — ${p.deadlineLabel}` : ''}`, days, kind: 'deadline', project: p });
+  }
+  out.sort((a, b) => a.date.localeCompare(b.date) || (a.time || '99:99').localeCompare(b.time || '99:99'));
+  return out;
+}
+
+function countdownAnchor(items) {
+  return (
+    items.find((i) => i.kind === 'event' && /✈/.test(i.title)) ||
+    items.find((i) => i.kind === 'deadline') ||
+    items.find((i) => i.kind === 'event') ||
+    null
+  );
+}
+
+function daysLeftText(days) {
+  return days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : `${days} days`;
+}
+
+function paintCountdownCell() {
+  const cell = document.getElementById('fma-count-cell');
+  const label = document.getElementById('fma-count-label');
+  const value = document.getElementById('fma-count-value');
+  const anchor = countdownAnchor(countdownItems());
+  if (!anchor) {
+    label.textContent = 'Next';
+    value.textContent = '—';
+    value.classList.remove('caution');
+    cell.title = 'Countdown — nothing in the next 30 days';
+    return;
+  }
+  const lead = /^\p{Extended_Pictographic}/u.exec(anchor.title);
+  label.textContent = lead ? lead[0] : anchor.kind === 'deadline' ? 'Deadline' : 'Next';
+  value.textContent = anchor.days === 0 ? 'today' : `${anchor.days}d`;
+  value.classList.toggle('caution', anchor.days <= 1);
+  cell.title = `${daysLeftText(anchor.days)} — ${stripLeadEmoji(anchor.title)}\nOpen the 30-day countdown`;
+}
+
+function cdDateLabel(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function renderCountdownPage() {
+  const wrap = displayBody;
+  const cd = state.countdown;
+  if (!cd) {
+    setEmpty(wrap, 'Reading the calendar…');
+    return;
+  }
+  if (!cd.connected) setEmpty(wrap, 'Calendar not connected — project deadlines only.');
+  const items = countdownItems();
+  if (!items.length) {
+    if (cd.connected) setEmpty(wrap, 'Nothing in the next 30 days.');
+    return;
+  }
+
+  const anchor = countdownAnchor(items);
+  if (anchor) {
+    const hero = el('div', 'cd-hero');
+    hero.appendChild(el('span', 'cd-hero-num' + (anchor.days <= 1 ? ' caution' : ''), anchor.days === 0 ? 'Today' : String(anchor.days)));
+    const side = el('div', 'cd-hero-side');
+    if (anchor.days > 0) side.appendChild(el('span', 'cd-hero-unit', anchor.days === 1 ? 'day to' : 'days to'));
+    side.appendChild(el('span', 'cd-hero-title', stripLeadEmoji(anchor.title)));
+    hero.appendChild(side);
+    wrap.appendChild(hero);
+  }
+
+  const buckets = [
+    { max: 6, label: 'Next 7 days' },
+    { max: 13, label: 'Week 2' },
+    { max: Infinity, label: 'Later' },
+  ];
+  let bucket = -1;
+  let dayRow = null;
+  let lastDate = null;
+  for (const it of items) {
+    const b = buckets.findIndex((x) => it.days <= x.max);
+    if (b !== bucket) {
+      bucket = b;
+      wrap.appendChild(el('div', 'page-sub cd-sub', buckets[b].label));
+      lastDate = null;
+    }
+    if (it.date !== lastDate) {
+      lastDate = it.date;
+      dayRow = el('div', 'cd-day');
+      const count = el('div', 'cd-count' + (it.days <= 1 ? ' caution' : ''));
+      count.appendChild(el('span', 'cd-count-num', it.days === 0 ? '0' : String(it.days)));
+      count.appendChild(el('span', 'cd-count-unit', it.days === 0 ? 'today' : it.days === 1 ? 'day' : 'days'));
+      dayRow.appendChild(count);
+      const list = el('div', 'cd-list');
+      list.appendChild(el('div', 'cd-date', cdDateLabel(it.date)));
+      dayRow.appendChild(list);
+      wrap.appendChild(dayRow);
+    }
+    const list = dayRow.querySelector('.cd-list');
+    const row = el(it.kind === 'deadline' ? 'button' : 'div', `cd-ev ${it.kind}`);
+    row.appendChild(el('span', 'cd-ev-time', it.time || (it.kind === 'deadline' ? 'due' : 'all day')));
+    const title = el('span', 'cd-ev-title');
+    title.innerHTML = renderInline(it.title);
+    if (it.kind === 'deadline') title.appendChild(el('span', 'cd-tag', 'Project'));
+    row.appendChild(title);
+    if (it.kind === 'deadline') {
+      row.title = 'Open the project note';
+      row.addEventListener('click', () => openProjectNote(it.project));
+    }
+    list.appendChild(row);
+  }
+}
+
+async function loadCountdown() {
+  await safely(null, 'countdown', async () => {
+    state.countdown = await window.brain.countdown();
+    paintCountdownCell();
+    repaintIfCurrent('countdown');
+  });
+}
+
+document.getElementById('fma-count-cell').addEventListener('click', () => showPage(currentPage === 'countdown' ? 'now' : 'countdown'));
+document.getElementById('agenda-head').addEventListener('click', () => showPage(currentPage === 'countdown' ? 'now' : 'countdown'));
 
 // ======================= SYSTEMS rail: jobs =======================
 const railEls = new Map(); // id -> { root, name, meta, stop }
@@ -1347,30 +1519,186 @@ function renderSessions(list) {
     return;
   }
   for (const s of list) {
-    const div = el('button', 'sess');
+    const div = el('div', 'sess');
+    const main = el('button', 'sess-main');
     const head = el('div', 'sess-head');
     head.appendChild(el('span', 'sess-dot'));
     head.appendChild(el('span', 'sess-name', s.name));
-    if (s.hasNotes) head.appendChild(el('span', 'sess-notes', 'Notes'));
-    div.appendChild(head);
-    div.appendChild(el('div', 'sess-meta', `pid ${s.pid} · ${s.tty} · ${s.etime}`));
-    div.title = `${s.cwd}\nRead this session in the Reading Room`;
-    div.addEventListener('click', () => showPage(`read:${s.pid}`));
+    if (pinnedSession && pinnedSession.slug === s.slug) head.appendChild(el('span', 'sess-pin', 'Pinned'));
+    else if (s.hasNotes) head.appendChild(el('span', 'sess-notes', 'Notes'));
+    main.appendChild(head);
+    const title = sessionTitles.get(titleKey(s));
+    if (title) main.appendChild(el('div', 'sess-title', title));
+    main.appendChild(el('div', 'sess-meta', `pid ${s.pid} · ${s.tty} · ${s.etime}`));
+    main.title = `${s.cwd}\nRead this session in the Reading Room`;
+    main.addEventListener('click', () => showPage(`read:${s.pid}`));
+    div.appendChild(main);
+    const notes = el('button', 'sess-act');
+    notes.innerHTML = ICONS.notes;
+    notes.title = 'Notes & widget pin for this terminal';
+    notes.setAttribute('aria-label', 'Notes & widget pin');
+    notes.addEventListener('click', () => showPage(`sess:${s.slug}`));
+    div.appendChild(notes);
     container.appendChild(div);
   }
   lastSessionList = list;
   if (currentPage.startsWith('read:')) refreshReaderSwitcher();
+  fetchMissingTitles(list);
 }
 let lastSessionList = [];
+
+// Every terminal run from the vault is "Second Brain"; the session's own
+// ai-title is what tells them apart. Titles cost a 64 KB tail read each, so
+// they are fetched only when a pid/session pair is new (after /clear too) —
+// never on every 10 s poll tick.
+const sessionTitles = new Map(); // `${pid}:${sessionId}` -> title
+let titleFetchBusy = false;
+function titleKey(s) {
+  return `${s.pid}:${s.sessionId || ''}`;
+}
+async function fetchMissingTitles(list) {
+  if (titleFetchBusy || !list.some((s) => !sessionTitles.has(titleKey(s)))) return;
+  if (!window.brain || typeof window.brain.readerSessions !== 'function') return;
+  titleFetchBusy = true;
+  try {
+    const rs = await window.brain.readerSessions();
+    for (const r of rs || []) sessionTitles.set(`${r.pid}:${r.sessionId || ''}`, r.title || '');
+    for (const s of list) if (!sessionTitles.has(titleKey(s))) sessionTitles.set(titleKey(s), '');
+  } catch {
+    /* titles are a nicety — cards still render without them */
+  } finally {
+    titleFetchBusy = false;
+  }
+  renderSessions(lastSessionList);
+}
 
 async function loadSessions() {
   const container = document.getElementById('rail-sessions');
   await safely(container, 'sessions', async () => {
+    await loadPinnedSession();
     renderSessions(await window.brain.listSessions());
   });
 }
 
 window.brain.onSessionsUpdate((list) => renderSessions(list));
+
+// ======================= TERMINAL page (notes + widget pin) =======================
+// What used to live only in the old Dashboard: a terminal's own notes file
+// (AI/session-notes/<slug>.md — its `- [ ]` lines are the widget's Tasks tab)
+// and the pin that picks which terminal the widget follows. Autosave 600 ms
+// after typing stops, flushed on page leave.
+let pinnedSession = null; // { slug, name } | null
+const sessNotes = { slug: null, name: null, timer: null, text: null };
+
+async function loadPinnedSession() {
+  try {
+    pinnedSession = await window.brain.getActiveSession();
+  } catch {
+    pinnedSession = null;
+  }
+}
+
+function checklistCount(text) {
+  const lines = String(text || '').split(/\r?\n/);
+  const open = lines.filter((l) => /^\s*[-*]\s+\[ \]/.test(l)).length;
+  const done = lines.filter((l) => /^\s*[-*]\s+\[[xX]\]/.test(l)).length;
+  return { open, done, total: open + done };
+}
+
+async function saveSessionNotesNow() {
+  clearTimeout(sessNotes.timer);
+  sessNotes.timer = null;
+  if (!sessNotes.slug || sessNotes.text == null) return;
+  const { slug, name, text } = sessNotes;
+  sessNotes.text = null;
+  try {
+    await window.brain.saveSessionNotes({ slug, name, text });
+    const st = document.getElementById('sesspage-status');
+    if (st && currentPage === `sess:${slug}`) st.textContent = 'Saved';
+  } catch (e) {
+    status(`Could not save terminal notes — ${errText(e)}`, true);
+  }
+}
+
+function flushSessionNotes() {
+  if (sessNotes.timer) saveSessionNotesNow();
+}
+
+function paintSessionProgress(text) {
+  const node = document.getElementById('sesspage-progress');
+  if (!node) return;
+  const c = checklistCount(text);
+  node.textContent = c.total ? `${c.done}/${c.total} checked` : 'No checklist yet';
+}
+
+function renderSessionPage(slug) {
+  const wrap = displayBody;
+  const s = lastSessionList.find((x) => x.slug === slug) || null;
+  const name = s ? s.name : slug;
+  sessNotes.slug = slug;
+  sessNotes.name = name;
+  sessNotes.text = null;
+
+  const head = el('div', 'sesspage-head');
+  head.appendChild(el('div', 'sesspage-name', (s && sessionTitles.get(titleKey(s))) || name));
+  head.appendChild(
+    el('div', 'sesspage-meta', s ? `${name} · pid ${s.pid} · ${s.tty} · up ${s.etime}` : 'No longer running — notes are kept'),
+  );
+  if (s && s.cwd) head.appendChild(el('div', 'sesspage-cwd', s.cwd));
+  wrap.appendChild(head);
+
+  const actions = el('div', 'sesspage-actions');
+  if (s) {
+    const read = el('button', 'modekey', 'Read in Reading Room');
+    read.addEventListener('click', () => showPage(`read:${s.pid}`));
+    actions.appendChild(read);
+  }
+  const pinned = pinnedSession && pinnedSession.slug === slug;
+  const pin = el('button', 'modekey' + (pinned ? ' engaged' : ''), pinned ? 'Pinned to widget' : 'Pin to widget');
+  pin.title = pinned
+    ? 'The notes widget’s Tasks tab follows this terminal — click to unpin'
+    : 'Make the notes widget’s Tasks tab follow this terminal’s checklist';
+  pin.addEventListener('click', async () => {
+    try {
+      pinnedSession = pinned ? await window.brain.clearActiveSession() : await window.brain.setActiveSession(slug, name);
+    } catch (e) {
+      status(`Could not change the pin — ${errText(e)}`, true);
+    }
+    renderSessions(lastSessionList);
+    repaintIfCurrent(`sess:${slug}`);
+  });
+  actions.appendChild(pin);
+  actions.appendChild(el('span', 'sesspage-progress', ''));
+  actions.lastChild.id = 'sesspage-progress';
+  wrap.appendChild(actions);
+
+  const area = el('textarea', 'sesspage-notes');
+  area.placeholder = 'Notes for this terminal. Lines like “- [ ] step” become the widget’s checklist.';
+  area.spellcheck = false;
+  area.disabled = true;
+  wrap.appendChild(area);
+  const st = el('div', 'sesspage-status', '');
+  st.id = 'sesspage-status';
+  wrap.appendChild(st);
+
+  window.brain
+    .getSessionNotes(slug)
+    .then((text) => {
+      if (currentPage !== `sess:${slug}`) return;
+      area.value = text || '';
+      area.disabled = false;
+      paintSessionProgress(area.value);
+    })
+    .catch((e) => setError(st, e));
+
+  area.addEventListener('input', () => {
+    sessNotes.text = area.value;
+    st.textContent = '';
+    paintSessionProgress(area.value);
+    clearTimeout(sessNotes.timer);
+    sessNotes.timer = setTimeout(saveSessionNotesNow, 600);
+  });
+}
 
 // ======================= READING ROOM =======================
 // Read one running Claude terminal as prose. The reader owns the center
@@ -1590,7 +1918,7 @@ function fmtTurnTime(ts) {
 
 function buildTurn(turn) {
   const role = turn.role || 'assistant';
-  const node = el('article', `turn turn-${role}` + (turn.queued ? ' queued' : ''));
+  const node = el('article', `turn turn-${role}` + (turn.queued ? ' queued' : '') + (turn.retracted ? ' retracted' : ''));
   node.dataset.uuid = turn.uuid;
   const ts = fmtTurnTime(turn.ts);
   if (ts) node.appendChild(el('span', 'turn-ts', ts));
@@ -2332,6 +2660,7 @@ function refreshAll() {
   loadInbox();
   loadHealth();
   loadFinance();
+  loadCountdown();
   loadSessions();
 }
 
@@ -2339,6 +2668,7 @@ document.getElementById('refresh').addEventListener('click', refreshAll);
 
 window.addEventListener('focus', () => {
   renderClock();
+  loadCountdown();
   loadToday();
   loadGarden();
   loadInbox();

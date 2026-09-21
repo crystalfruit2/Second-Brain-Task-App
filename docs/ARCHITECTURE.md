@@ -835,3 +835,21 @@ touched today. Tests: `test/garden.test.js` (synthetic vault in a temp dir, incl
 column trap, an unreadable note, dd.MM.yyyy deadlines and alias boundaries). Adversarial review
 2026-09-18: 12 findings, all applied — the big three were the commit signal cached for the life of
 the process, the repo path scraped from the Status column, and UTC day arithmetic.
+
+## Countdown + Terminal page (2026-09-22)
+
+**Countdown.** Header pill (`#fma-count-cell`, e.g. `✈ 9d`) + center page `countdown`, also opened from the
+Today card's "Schedule · 30 days" header. Source: `gcal.py events 30` (new subcommand, JSON, own cache
+`.claude/.gcal-cache-30d.json`, same 2 h TTL — the hook's 3-day cache is untouched) via `vault.readCountdown()`
+→ IPC `mc:countdown`; Garden `deadline:` projects merged in the renderer. Real calendar dates, not the vault
+day. Anchor = next ✈ event, else next project deadline, else next event. All-day birthdays dimmed; yellow ≤1 day.
+
+**Terminal page** (`sess:<slug>`), opened from the notes glyph on each Activity-rail card: the terminal's
+`AI/session-notes/<slug>.md` (autosave 600 ms, flushed on page leave), checklist count, "Pin to widget"
+(same `session:setActive` the old Dashboard used; green = pinned), "Read in Reading Room". Rail cards show
+the session's ai-title under the project name — fetched via `reader:sessions` only when a pid/sessionId pair
+is new, never on the 10 s poll.
+
+**Queued ghosts fixed.** `queue-operation` `remove` (absorbed_mid_turn / delivered_to_agent) now settles the
+ghost in place; `popAll` retracts it (`retracted: true`, hidden). `<agent-message>` / `<cross-session-message>`
+are harness text and never become turns. Measured on 60 real transcripts: stuck "queued" 30 → 0.

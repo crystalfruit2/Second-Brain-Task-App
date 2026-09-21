@@ -10,7 +10,10 @@ function pad(n) {
 }
 
 // Local (not UTC) date so the daily note matches the vault's YYYY-MM-DD convention.
+// Vault day runs 05:00 → 05:00: 00:00–04:59 still belongs to the previous day.
+const DAY_START_HOUR = 5;
 function todayStamp(d = new Date()) {
+  d = new Date(d.getTime() - DAY_START_HOUR * 3600_000);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
@@ -825,6 +828,42 @@ function readAgenda() {
   });
 }
 
+// ---------- Countdown (30-day horizon) ----------
+// Every calendar event from today to today+30, straight from gcal.py's JSON
+// `events` subcommand (own cache, same 2h TTL as the hook — no extra gcalcli
+// calls while it is warm). Real calendar dates, not the vault day: these are
+// appointments. Project deadlines are merged in the renderer from Garden.
+const COUNTDOWN_DAYS = 30;
+
+function readCountdown() {
+  const script = path.join(VAULT_PATH, '.claude', 'skills', 'gcal', 'gcal.py');
+  if (!fs.existsSync(script)) return Promise.resolve({ connected: false, events: [] });
+  return new Promise((resolve) => {
+    execFile(
+      'python3',
+      [script, 'events', String(COUNTDOWN_DAYS)],
+      { cwd: VAULT_PATH, timeout: 20_000, maxBuffer: 1 << 20 },
+      (err, stdout) => {
+        if (err) return resolve({ connected: false, events: [] });
+        let events;
+        try {
+          events = JSON.parse(String(stdout || '[]'));
+        } catch {
+          return resolve({ connected: false, events: [] });
+        }
+        if (!Array.isArray(events)) return resolve({ connected: false, events: [] });
+        resolve({
+          connected: true,
+          days: COUNTDOWN_DAYS,
+          events: events
+            .filter((e) => e && /^\d{4}-\d{2}-\d{2}$/.test(e.date) && e.title)
+            .map((e) => ({ date: e.date, time: e.time || '', title: String(e.title) })),
+        });
+      }
+    );
+  });
+}
+
 // ---------- Deep-linked notes (rocky://open?file=…) ----------
 // Any vault-relative markdown file, read for the Mission Control note page.
 // Frontmatter is split off (rendered as a small meta row, not as a table);
@@ -937,6 +976,7 @@ function resolveWikilink(target) {
 }
 
 module.exports = {
+  readCountdown,
   readNote,
   resolveWikilink,
   appendNote,

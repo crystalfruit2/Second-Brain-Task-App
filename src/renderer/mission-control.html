@@ -46,6 +46,10 @@
         <span class="fma-label">Terminals</span>
         <span class="fma-value" id="fma-term-value">—</span>
       </button>
+      <button class="fma-cell" id="fma-count-cell" title="Countdown — the next 30 days">
+        <span class="fma-label" id="fma-count-label">Next</span>
+        <span class="fma-value" id="fma-count-value">—</span>
+      </button>
       <div class="annunciators" id="annunciators"></div>
       <div class="fma-clock">
         <span id="fma-date"></span>
@@ -64,7 +68,7 @@
         </button>
         <div class="tape-scroll">
           <div id="tape-tasks"></div>
-          <div class="tape-sub">Schedule</div>
+          <button class="tape-sub tape-sub-link" id="agenda-head" title="Open the 30-day countdown">Schedule<span class="tape-sub-more">30 days</span></button>
           <div id="tape-agenda"></div>
         </div>
       </aside>

@@ -13,7 +13,10 @@ function renderInline(text) {
 }
 
 function pad(n) { return String(n).padStart(2, '0'); }
+// Vault day runs 05:00 → 05:00: 00:00–04:59 still belongs to the previous day.
+const DAY_START_HOUR = 5;
 function todayStamp(d = new Date()) {
+  d = new Date(d.getTime() - DAY_START_HOUR * 3600_000);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
