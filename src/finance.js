@@ -10,6 +10,19 @@ const BRIEF_HEADING = '## 💰 Pazar portföy brifingi';
 const SICIL_HEADER_RE = /^\|\s*Tarih\s*\|\s*Portföy TL\s*\|/;
 const BLOCK_RE = /<!--finance:([a-z]+):start-->\n?([\s\S]*?)\n?<!--finance:\1:end-->/g;
 const RULE_ROW_RE = /^\|\s*`([^`]+)`\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|$/;
+// Warning lines /finance writes above the rules table (22.09): "⚠️ snapshot bayat: CCOLA (fill 108 > PDF 0), …"
+// and "⚠️ ölçülemedi: akbnk_low, garan_low — AKBNK 65,20 · 16.09.2026 kapanışı (3 seans geri); …".
+const FLAG_LINE_RE = /^⚠️\s*(snapshot bayat|ölçülemedi)\s*:\s*(.*)$/u;
+
+// Vault day runs 05:00 → 05:00 (bash .claude/bin/vault-day); local clock, never UTC —
+// toISOString() at 01:30 Istanbul on the 12th names the 11th only by accident, and at
+// 04:00 it names the 12th, which the vault does not have yet.
+const DAY_START_HOUR = 5;
+function vaultDayStamp(d = new Date()) {
+  const t = new Date(d.getTime() - DAY_START_HOUR * 3600_000);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+}
 
 function splitRow(line) {
   return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
@@ -44,21 +57,48 @@ function parseBlocks(content) {
   return out;
 }
 
-// The rules block's table: | `id` | 🔴 tetik / ✅ / ℹ️ | measure | evet/— |
+// The rules block's table: | `id` | 🔴 tetik / ✅ / ℹ️ / ⚠️ ölçülemedi | measure | evet/— |
+// 'unmeasured' (22.09) = the rule was NOT evaluated (close null or 2+ sessions old); it is never 'ok'.
+function ruleStatus(st) {
+  if (st.includes('🔴')) return 'fired';
+  if (st.includes('⚠') || /ölçülemedi/iu.test(st)) return 'unmeasured';
+  if (st.includes('ℹ')) return 'info';
+  return 'ok';
+}
+
 function parseRules(block) {
   const rows = [];
   for (const line of String(block || '').split('\n')) {
     const m = RULE_ROW_RE.exec(line.trim());
     if (!m) continue;
-    const st = m[2];
-    rows.push({
-      id: m[1],
-      status: st.includes('🔴') ? 'fired' : st.includes('ℹ') ? 'info' : 'ok',
-      measure: m[3],
-      task: m[4] === 'evet',
-    });
+    rows.push({ id: m[1], status: ruleStatus(m[2]), measure: m[3], task: m[4] === 'evet' });
   }
   return rows;
+}
+
+// Flag lines above the table → { stale: [{code, text}], unmeasured: [{code, text}] }.
+// Codes are the leading uppercase tickers of each ", " / "; " separated item.
+function parseFlags(block) {
+  const out = { stale: [], unmeasured: [] };
+  for (const raw of String(block || '').split('\n')) {
+    const m = FLAG_LINE_RE.exec(raw.trim());
+    if (!m) continue;
+    const kind = m[1] === 'snapshot bayat' ? 'stale' : 'unmeasured';
+    let body = m[2].replace(/\s+—\s+değer eklenmedi.*$/u, '').trim();
+    if (kind === 'unmeasured') {
+      // "akbnk_low, garan_low — AKBNK 65,20 · 16.09.2026 kapanışı (3 seans geri); GARAN …"
+      const dash = body.indexOf(' — ');
+      out.rules = dash >= 0 ? body.slice(0, dash).split(',').map((r) => r.trim()).filter(Boolean) : [];
+      body = dash >= 0 ? body.slice(dash + 3) : body;
+    }
+    const items = body.split(kind === 'stale' ? /,\s+(?=[A-Z0-9]{3,6}\s)/u : /;\s+/u);
+    for (const it of items) {
+      const t = it.trim();
+      const code = /^([A-Z0-9]{3,6})\b/u.exec(t);
+      if (t) out[kind].push({ code: code ? code[1] : '', text: t });
+    }
+  }
+  return out;
 }
 
 // Calendar block: "- dd.MM.yyyy (+N gün): what"
@@ -136,7 +176,7 @@ function readLatestBrief(vaultPath, date = new Date(), lookback = 14) {
   for (let i = 0; i <= lookback; i++) {
     const d = new Date(date);
     d.setDate(d.getDate() - i);
-    const stamp = d.toISOString().slice(0, 10);
+    const stamp = vaultDayStamp(d);
     const file = path.join(dir, `${stamp}.md`);
     if (!fs.existsSync(file)) continue;
     let text;
@@ -168,10 +208,11 @@ function readFinance(vaultPath, date = new Date()) {
     last: last ? Object.fromEntries(sicil.columns.map((c, i) => [c, last.cells[i]])) : null,
     record: (blocks.record || '').split('\n')[0] || '',
     rules: parseRules(blocks.rules),
+    flags: parseFlags(blocks.rules),
     calendar: parseCalendar(blocks.calendar),
     brief: readLatestBrief(vaultPath, date),
     calls: readCalls(vaultPath),
   };
 }
 
-module.exports = { parseSicil, parseBlocks, parseRules, parseCalendar, extractBrief, frontmatter, readCalls, readLatestBrief, readFinance };
+module.exports = { parseSicil, parseBlocks, parseRules, parseFlags, parseCalendar, extractBrief, frontmatter, readCalls, readLatestBrief, readFinance, vaultDayStamp };

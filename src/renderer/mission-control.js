@@ -848,13 +848,36 @@ function renderFinancePage() {
   if (f.record) head.appendChild(el('span', 'fin-meta', plainText(f.record)));
   wrap.appendChild(head);
 
-  // Rules — fired first
-  const rules = [...f.rules].sort((a, b) => (a.status === 'fired' ? -1 : b.status === 'fired' ? 1 : 0));
+  // Data-quality flags (22.09) — yellow, above the rules: a stale snapshot or an unmeasurable
+  // brake is a warning about the DATA, never a fired rule and never silence.
+  const flags = f.flags || { stale: [], unmeasured: [] };
+  if (flags.stale.length || flags.unmeasured.length) {
+    wrap.appendChild(el('div', 'fin-sub', 'Data'));
+    if (flags.unmeasured.length) {
+      const row = el('div', 'fin-warn');
+      row.appendChild(el('span', 'fin-warn-kind', '△ unmeasured'));
+      row.appendChild(el('span', 'fin-warn-text', `${flags.unmeasured.map((u) => u.text).join(' · ')} — brake not evaluated, not "not hit"`));
+      wrap.appendChild(row);
+    }
+    if (flags.stale.length) {
+      const row = el('div', 'fin-warn');
+      row.appendChild(el('span', 'fin-warn-kind', '△ snapshot stale'));
+      row.appendChild(el('span', 'fin-warn-text', `${flags.stale.map((u) => u.text).join(', ')} — fills exceed the PDF; /finance sync`));
+      wrap.appendChild(row);
+    }
+  }
+
+  // Rules — fired first, then unmeasured, then the rest
+  const rank = { fired: 0, unmeasured: 1, ok: 2, info: 3 };
+  const rules = [...f.rules].sort((a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9));
   if (rules.length) {
-    wrap.appendChild(el('div', 'fin-sub', `Rules · ${rules.filter((r) => r.status === 'fired').length} fired`));
+    const fired = rules.filter((r) => r.status === 'fired').length;
+    const unm = rules.filter((r) => r.status === 'unmeasured').length;
+    wrap.appendChild(el('div', 'fin-sub', `Rules · ${fired} fired${unm ? ` · ${unm} unmeasured` : ''}`));
+    const glyph = { fired: '● ', unmeasured: '△ ', info: '○ ' };
     for (const r of rules) {
       const row = el('div', `fin-rule ${r.status}`);
-      row.appendChild(el('span', 'fin-rule-id', `${r.status === 'fired' ? '● ' : r.status === 'info' ? '○ ' : '  '}${r.id}`));
+      row.appendChild(el('span', 'fin-rule-id', `${glyph[r.status] || '  '}${r.id}`));
       row.appendChild(el('span', 'fin-rule-measure', r.measure + (r.task ? ' → task' : '')));
       wrap.appendChild(row);
     }
@@ -1164,9 +1187,19 @@ function paintFinanceInstrument() {
   const total = (f.last['Portföy TL'] || '').replace(/\.(\d{3})$/, 'k').replace(/\.\d{3}k$/, (m) => m.slice(0, 1) + 'k');
   value.textContent = total ? `${f.last['Portföy TL'].replace(/\.(\d{3})$/, ',$1').split(',')[0]}k ₺` : '—';
   const fired = f.rules.filter((r) => r.status === 'fired').length;
-  note.textContent = fired ? `${fired} rule${fired > 1 ? 's' : ''} fired` : (f.brief ? `brief ${f.brief.date.slice(5).split('-').reverse().join('.')}` : 'no brief yet');
-  note.classList.toggle('caution', fired > 0);
-  value.classList.toggle('caution', fired > 0);
+  const unmeasured = f.rules.filter((r) => r.status === 'unmeasured').length;
+  const stale = f.flags ? f.flags.stale.length : 0;
+  // 22.09: a blind brake or a stale snapshot outranks "no news" — the instrument must not read calm.
+  note.textContent = fired
+    ? `${fired} rule${fired > 1 ? 's' : ''} fired${unmeasured ? ` · ${unmeasured} unmeasured` : ''}`
+    : unmeasured
+      ? `${unmeasured} rule${unmeasured > 1 ? 's' : ''} unmeasured`
+      : stale
+        ? `snapshot stale · ${stale} code${stale > 1 ? 's' : ''}`
+        : (f.brief ? `brief ${f.brief.date.slice(5).split('-').reverse().join('.')}` : 'no brief yet');
+  const caution = fired > 0 || unmeasured > 0 || stale > 0;
+  note.classList.toggle('caution', caution);
+  value.classList.toggle('caution', caution);
 }
 
 async function loadFinance() {
